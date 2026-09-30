@@ -1,0 +1,3 @@
+com.speednet.framework.security.config.SpeednetSecurityAutoConfiguration
+com.speednet.framework.security.config.SpeednetWebSecurityConfigurerAdapter
+com.speednet.framework.operatelog.config.SpeednetOperateLogConfiguration

@@ -1,0 +1,3 @@
+com.speednet.framework.datasource.config.SpeednetDataSourceAutoConfiguration
+com.speednet.framework.mybatis.config.SpeednetMybatisAutoConfiguration
+com.speednet.framework.translate.config.SpeednetTranslateAutoConfiguration

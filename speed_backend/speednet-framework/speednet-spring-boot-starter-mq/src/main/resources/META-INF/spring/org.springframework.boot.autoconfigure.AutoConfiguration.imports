@@ -1,0 +1,3 @@
+com.speednet.framework.mq.redis.config.SpeednetRedisMQProducerAutoConfiguration
+com.speednet.framework.mq.redis.config.SpeednetRedisMQConsumerAutoConfiguration
+com.speednet.framework.mq.rabbitmq.config.SpeednetRabbitMQAutoConfiguration

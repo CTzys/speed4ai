@@ -1,0 +1,1 @@
+package com.speednet.module.iot.gateway.protocol.emqx;

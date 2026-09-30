@@ -1,0 +1,11 @@
+package com.speednet.module.xray.framework.ssh;
+import com.jcraft.jsch.*;import com.speednet.module.xray.dal.dataobject.server.XrayServerDO;import org.springframework.stereotype.Component;import java.io.ByteArrayInputStream;import java.io.ByteArrayOutputStream;import java.nio.charset.StandardCharsets;import java.time.Duration;import java.util.Properties;
+@Component public class SshExecutor {
+ private static final int TIMEOUT=10_000;
+ public void test(XrayServerDO server)throws Exception{Session s=connect(server);s.disconnect();}
+ public CommandResult execute(XrayServerDO server,String command,Duration timeout)throws Exception{return execute(server,command,timeout,null);}
+ /** Supplies sudo's password through SSH stdin, never in a shell command. */
+ public CommandResult execute(XrayServerDO server,String command,Duration timeout,String stdin)throws Exception{Session s=connect(server);try{ChannelExec c=(ChannelExec)s.openChannel("exec");ByteArrayOutputStream out=new ByteArrayOutputStream();c.setCommand(command);c.setInputStream(stdin==null?null:new ByteArrayInputStream(stdin.getBytes(StandardCharsets.UTF_8)));c.setOutputStream(out);c.setErrStream(out);c.connect(TIMEOUT);long end=System.currentTimeMillis()+timeout.toMillis();while(!c.isClosed()&&System.currentTimeMillis()<end)Thread.sleep(200);if(!c.isClosed()){c.disconnect();throw new IllegalStateException("SSH 命令执行超时");}int code=c.getExitStatus();c.disconnect();return new CommandResult(code,out.toString(StandardCharsets.UTF_8));}finally{s.disconnect();}}
+ private Session connect(XrayServerDO server)throws Exception{JSch j=new JSch();if(Integer.valueOf(2).equals(server.getSshAuthType())){byte[] key=server.getSshPrivateKey().getBytes(StandardCharsets.UTF_8);byte[] pass=server.getSshKeyPassphrase()==null?null:server.getSshKeyPassphrase().getBytes(StandardCharsets.UTF_8);j.addIdentity("xray-"+server.getId(),key,null,pass);}Session s=j.getSession(server.getSshUsername(),server.getHost(),server.getSshPort());if(Integer.valueOf(1).equals(server.getSshAuthType()))s.setPassword(server.getSshPassword());Properties p=new Properties();p.put("StrictHostKeyChecking","no");s.setConfig(p);s.connect(TIMEOUT);return s;}
+ public record CommandResult(int exitCode,String output){}
+}

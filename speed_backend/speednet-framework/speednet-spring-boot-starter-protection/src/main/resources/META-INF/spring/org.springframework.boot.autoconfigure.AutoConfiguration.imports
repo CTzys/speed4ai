@@ -1,0 +1,4 @@
+com.speednet.framework.idempotent.config.SpeednetIdempotentConfiguration
+com.speednet.framework.lock4j.config.SpeednetLock4jConfiguration
+com.speednet.framework.ratelimiter.config.SpeednetRateLimiterConfiguration
+com.speednet.framework.signature.config.SpeednetApiSignatureAutoConfiguration

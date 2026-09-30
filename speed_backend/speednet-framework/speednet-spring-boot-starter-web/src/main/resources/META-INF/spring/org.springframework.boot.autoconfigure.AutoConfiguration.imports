@@ -1,0 +1,7 @@
+com.speednet.framework.apilog.config.SpeednetApiLogAutoConfiguration
+com.speednet.framework.jackson.config.SpeednetJacksonAutoConfiguration
+com.speednet.framework.swagger.config.SpeednetSwaggerAutoConfiguration
+com.speednet.framework.web.config.SpeednetWebAutoConfiguration
+com.speednet.framework.xss.config.SpeednetXssAutoConfiguration
+com.speednet.framework.banner.config.SpeednetBannerAutoConfiguration
+com.speednet.framework.encrypt.config.SpeednetApiEncryptAutoConfiguration

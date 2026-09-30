@@ -1,0 +1,1 @@
+package com.speednet.module.iot.controller.admin.rule.vo.data;

@@ -1,0 +1,23 @@
+.DS_Store
+**/.idea/
+**/target/
+**/node_modules/
+**/dist/
+**/dist-*/
+**/.flattened-pom.xml
+**/.env.local
+**/.env
+**/.env.*
+**/*.env
+**/http-client.env.json
+
+# Machine-specific and test Java application configuration
+**/src/**/resources/application-local.yml
+**/src/**/resources/application-local.yaml
+**/src/**/resources/application-local.properties
+**/src/**/resources/application-test.yml
+**/src/**/resources/application-test.yaml
+**/src/**/resources/application-test.properties
+**/src/**/resources/application-unit-test.yml
+**/src/**/resources/application-unit-test.yaml
+**/src/**/resources/application-unit-test.properties

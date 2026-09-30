@@ -1,0 +1,2 @@
+com.speednet.framework.redis.config.SpeednetRedisAutoConfiguration
+com.speednet.framework.redis.config.SpeednetCacheAutoConfiguration

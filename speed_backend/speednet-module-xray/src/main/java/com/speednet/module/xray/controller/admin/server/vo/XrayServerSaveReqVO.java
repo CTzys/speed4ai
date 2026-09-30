@@ -1,0 +1,3 @@
+package com.speednet.module.xray.controller.admin.server.vo;
+import jakarta.validation.constraints.*;import lombok.Data;
+@Data public class XrayServerSaveReqVO {private Long id;@NotBlank private String name;@NotBlank private String host;@NotNull @Min(1) @Max(65535) private Integer sshPort=22;@NotBlank private String sshUsername;@NotNull private Integer sshAuthType=1;private String sshPassword;private String sshPrivateKey;private String sshKeyPassphrase;private String panelScheme="https";@Min(1) @Max(65535) private Integer panelPort;private String panelPath;private String panelToken;private String remark;}

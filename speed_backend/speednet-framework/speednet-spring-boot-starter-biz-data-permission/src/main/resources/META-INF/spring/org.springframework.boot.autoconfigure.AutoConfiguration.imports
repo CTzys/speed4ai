@@ -1,0 +1,2 @@
+com.speednet.framework.datapermission.config.SpeednetDataPermissionAutoConfiguration
+com.speednet.framework.datapermission.config.SpeednetDeptDataPermissionAutoConfiguration

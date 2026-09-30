@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.speednet</groupId>
+        <artifactId>speednet</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>speednet-module-xray</artifactId>
+    <name>${project.artifactId}</name>
+    <description>Xray / 3x-ui 服务器安装与运行状态管理</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-module-system</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.mwiede</groupId>
+            <artifactId>jsch</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

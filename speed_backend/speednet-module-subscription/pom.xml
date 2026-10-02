@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+ <modelVersion>4.0.0</modelVersion>
+ <parent><groupId>com.speednet</groupId><artifactId>speednet</artifactId><version>${revision}</version></parent>
+ <artifactId>speednet-module-subscription</artifactId><description>用户订阅授权、客户端配置与流量管理</description>
+ <dependencies>
+  <dependency><groupId>com.speednet</groupId><artifactId>speednet-module-infra</artifactId><version>${revision}</version></dependency>
+  <dependency><groupId>com.speednet</groupId><artifactId>speednet-spring-boot-starter-job</artifactId></dependency>
+  <dependency><groupId>com.speednet</groupId><artifactId>speednet-module-member</artifactId><version>${revision}</version></dependency>
+  <dependency><groupId>com.speednet</groupId><artifactId>speednet-module-xray</artifactId><version>${revision}</version></dependency>
+  <dependency><groupId>com.speednet</groupId><artifactId>speednet-spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+ </dependencies>
+</project>

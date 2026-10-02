@@ -17,6 +17,7 @@
         <module>speednet-module-infra</module>
         <module>speednet-module-member</module>
         <module>speednet-module-xray</module>
+        <module>speednet-module-subscription</module>
 <!--        <module>speednet-module-bpm</module>-->
 <!--        <module>speednet-module-report</module>-->
 <!--        <module>speednet-module-mp</module>-->

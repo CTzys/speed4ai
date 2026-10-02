@@ -1,0 +1,134 @@
+import java.nio.file.Path;
+import java.util.List;
+import java.util.ArrayList;
+import java.sql.Connection;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import org.flywaydb.core.Flyway;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.env.PropertySource;
+import org.springframework.core.env.StandardEnvironment;
+import org.springframework.core.io.FileSystemResource;
+
+/** Standalone maintenance: loads source configuration without starting the application. */
+public class FlywayMaintenance {
+    public static void main(String[] args) throws Exception {
+        String action = args[1];
+        if (!List.of("check", "info", "repair", "validate", "consolidate-v8").contains(action)) {
+            throw new IllegalArgumentException("用法：bash script/flyway/flyway.sh [check|info|repair|validate|consolidate-v8] [profile]");
+        }
+        Path resources = Path.of(args[0], "speednet-server", "src", "main", "resources");
+        StandardEnvironment env = new StandardEnvironment();
+        load(env, resources.resolve("application.yaml"));
+        String profiles = args[2].isBlank()
+                ? env.getProperty("spring.profiles.active", "local") : args[2];
+        for (String profile : profiles.split(",")) {
+            profile = profile.trim();
+            if (!profile.matches("[A-Za-z0-9_-]+")) {
+                throw new IllegalArgumentException("无效 profile");
+            }
+            load(env, resources.resolve("application-" + profile + ".yaml"));
+        }
+        String primary = env.getProperty("spring.datasource.dynamic.primary", "master");
+        String prefix = "spring.datasource.dynamic.datasource." + primary + ".";
+        String url = env.getProperty("spring.flyway.url");
+        boolean dedicated = url != null;
+        if (!dedicated) url = env.getProperty(prefix + "url", env.getProperty("spring.datasource.url"));
+        String user = env.getProperty(dedicated ? "spring.flyway.user" : prefix + "username",
+                env.getProperty("spring.datasource.username"));
+        String password = env.getProperty(dedicated ? "spring.flyway.password" : prefix + "password",
+                env.getProperty("spring.datasource.password", ""));
+        if (url == null || user == null || url.contains("${") || password.contains("${")) {
+            throw new IllegalStateException("数据库配置缺失或包含未解析的占位符");
+        }
+        String locations = env.getProperty("spring.flyway.locations", "classpath:db/migration");
+        String[] resolved = locations.split(",");
+        for (int i = 0; i < resolved.length; i++) {
+            String location = resolved[i].trim();
+            resolved[i] = location.startsWith("classpath:")
+                    ? "filesystem:" + resources.resolve(location.substring("classpath:".length()))
+                    : location;
+        }
+        System.out.println("已加载 profile：" + profiles + "；数据库配置及迁移目录解析成功（不输出连接凭据）。");
+        if (action.equals("check")) return;
+        Flyway flyway = Flyway.configure().dataSource(url, user, password)
+                .locations(resolved)
+                .encoding(env.getProperty("spring.flyway.encoding", "UTF-8"))
+                .table(env.getProperty("spring.flyway.table", "flyway_schema_history"))
+                .cleanDisabled(true).load();
+        switch (action) {
+            case "consolidate-v8" -> {
+                consolidate(flyway, resolved);
+                flyway.repair();
+                flyway.validate();
+                System.out.println("迁移历史已合并为 V1～V8，校验通过；业务表和数据未修改。");
+            }
+            case "repair" -> { flyway.repair(); flyway.validate(); }
+            case "validate" -> flyway.validate();
+            case "info" -> {
+                for (var migration : flyway.info().all()) {
+                    System.out.printf("%s  %s  %s%n", migration.getVersion(),
+                            migration.getDescription(), migration.getState());
+                }
+            }
+        }
+    }
+
+    private static void consolidate(Flyway flyway, String[] locations) throws Exception {
+        String table = flyway.getConfiguration().getTable();
+        if (!table.matches("[A-Za-z0-9_]+")) throw new IllegalArgumentException("不支持的历史表名称");
+        if (java.util.Arrays.stream(locations).noneMatch(location -> location.startsWith("filesystem:")
+                && java.nio.file.Files.isRegularFile(Path.of(location.substring("filesystem:".length()),
+                    "V8__xray_and_subscription_management.sql")))) {
+            throw new IllegalStateException("未找到合并后的 V8 文件");
+        }
+        String backup = table + "_backup_" + LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        try (Connection connection = flyway.getConfiguration().getDataSource().getConnection()) {
+            checkHistory(connection, table, false);
+            try (var statement = connection.createStatement()) {
+                statement.executeUpdate("CREATE TABLE `" + backup + "` LIKE `" + table + "`");
+            }
+            connection.setAutoCommit(false);
+            try (var statement = connection.createStatement()) {
+                checkHistory(connection, table, true);
+                int copied = statement.executeUpdate("INSERT INTO `" + backup + "` SELECT * FROM `" + table + "`");
+                if (copied != 16) throw new IllegalStateException("备份记录数异常");
+                int deleted = statement.executeUpdate("DELETE FROM `" + table
+                        + "` WHERE version IN ('9','10','11','12','13','14','15','16') AND success=1");
+                if (deleted != 8) throw new IllegalStateException("删除记录数异常");
+                connection.commit();
+                System.out.println("已备份 16 条历史到 " + backup + "，删除 V9～V16 的 8 条记录。");
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            }
+        }
+    }
+
+    private static void checkHistory(Connection connection, String table, boolean lock) throws Exception {
+        List<String> versions = new ArrayList<>();
+        try (var statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT version, success, type FROM `" + table
+                     + "` ORDER BY installed_rank" + (lock ? " FOR UPDATE" : ""))) {
+            while (rows.next()) {
+                if (!rows.getBoolean("success") || !"SQL".equals(rows.getString("type"))) {
+                    throw new IllegalStateException("历史含失败或非 SQL 迁移，停止合并");
+                }
+                versions.add(rows.getString("version"));
+            }
+        }
+        List<String> expected = java.util.stream.IntStream.rangeClosed(1, 16)
+                .mapToObj(Integer::toString).toList();
+        if (!versions.equals(expected)) throw new IllegalStateException("只支持完整成功的 V1～V16，当前：" + versions);
+    }
+
+    private static void load(StandardEnvironment env, Path path) throws Exception {
+        if (!path.toFile().isFile()) throw new IllegalArgumentException("配置文件不存在：" + path);
+        var sources = new YamlPropertySourceLoader().load(path.toString(), new FileSystemResource(path));
+        // Later files/documents override earlier ones; system properties and environment stay first.
+        for (PropertySource<?> source : sources) {
+            env.getPropertySources().addAfter(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, source);
+        }
+    }
+}

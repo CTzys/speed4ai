@@ -43,6 +43,7 @@ class SubscriptionPersistenceTest {
    String migration=migrationSection(14).replace("b'0'","0").replace("b'1'","1");
    ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.ByteArrayResource(migration.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
    ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.ByteArrayResource(migrationSection(15).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+   statement.execute("ALTER TABLE subscription ADD COLUMN plan_id BIGINT"); statement.execute("ALTER TABLE subscription ADD COLUMN base_total_bytes BIGINT"); statement.execute("ALTER TABLE subscription ADD COLUMN extra_used_bytes BIGINT DEFAULT 0");
    String jobMigration=migrationSection(16).replace("b'0'","0");
    ScriptUtils.executeSqlScript(connection,new org.springframework.core.io.ByteArrayResource(jobMigration.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
   }

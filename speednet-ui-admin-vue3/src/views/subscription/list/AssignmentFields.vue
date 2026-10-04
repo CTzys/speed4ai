@@ -93,6 +93,15 @@ const serverChanged = async (row: Api.Assignment) => {
     loadingServer.value = undefined
   }
 }
+watch(
+  () => props.modelValue.map((row) => row.serverId),
+  async (ids) => {
+    for (const id of new Set(ids)) {
+      if (id && !inbounds[id]) inbounds[id] = await Api.getInbounds(id)
+    }
+  },
+  { immediate: true }
+)
 const remove = (index: number) =>
   emit(
     'update:modelValue',

@@ -74,12 +74,12 @@
 <!--            <artifactId>speednet-module-bpm</artifactId>-->
 <!--            <version>${revision}</version>-->
 <!--        </dependency>-->
-        <!-- 支付服务。默认注释，保证编译速度 -->
-<!--        <dependency>-->
-<!--            <groupId>com.speednet</groupId>-->
-<!--            <artifactId>speednet-module-pay</artifactId>-->
-<!--            <version>${revision}</version>-->
-<!--        </dependency>-->
+        <!-- 支付服务：商城交易依赖 -->
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-module-pay</artifactId>
+            <version>${revision}</version>
+        </dependency>
 
         <!-- 微信公众号模块。默认注释，保证编译速度 -->
 <!--        <dependency>-->
@@ -88,27 +88,27 @@
 <!--            <version>${revision}</version>-->
 <!--        </dependency>-->
 
-        <!-- 商城相关模块。默认注释，保证编译速度-->
-<!--        <dependency>-->
-<!--            <groupId>com.speednet</groupId>-->
-<!--            <artifactId>speednet-module-product</artifactId>-->
-<!--            <version>${revision}</version>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>com.speednet</groupId>-->
-<!--            <artifactId>speednet-module-promotion</artifactId>-->
-<!--            <version>${revision}</version>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>com.speednet</groupId>-->
-<!--            <artifactId>speednet-module-trade</artifactId>-->
-<!--            <version>${revision}</version>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>com.speednet</groupId>-->
-<!--            <artifactId>speednet-module-statistics</artifactId>-->
-<!--            <version>${revision}</version>-->
-<!--        </dependency>-->
+        <!-- 商城：商品、营销、交易与统计 -->
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-module-product</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-module-promotion</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-module-trade</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.speednet</groupId>
+            <artifactId>speednet-module-statistics</artifactId>
+            <version>${revision}</version>
+        </dependency>
 
         <!-- AI 大模型相关模块。默认注释，保证编译速度 -->
 <!--        <dependency>-->

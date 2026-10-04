@@ -53,11 +53,7 @@ const formData = ref<Spu>({
   virtualSalesCount: 0 // 虚拟销量
 })
 // 表单规则
-const rules = reactive({
-  sort: [required],
-  giveIntegral: [required],
-  virtualSalesCount: [required]
-})
+const rules = reactive({})
 
 /** 将传进来的值赋值给 formData */
 watch(

@@ -21,7 +21,7 @@
           v-model="form.sshPassword"
           type="password"
           show-password
-          :placeholder="form.id ? '留空表示不修改' : ''"
+          :placeholder="savedSshAuthType === 1 ? '********' : form.id ? '留空表示不修改' : ''"
       /></el-form-item>
       <template v-else
         ><el-form-item label="SSH 私钥"
@@ -29,7 +29,13 @@
             v-model="form.sshPrivateKey"
             type="textarea"
             :rows="5"
-            :placeholder="form.id ? '留空表示不修改' : '粘贴 PEM/OpenSSH 私钥'" /></el-form-item
+            :placeholder="
+              savedSshAuthType === 2
+                ? '********'
+                : form.id
+                  ? '留空表示不修改'
+                  : '粘贴 PEM/OpenSSH 私钥'
+            " /></el-form-item
         ><el-form-item label="私钥口令"
           ><el-input v-model="form.sshKeyPassphrase" type="password" show-password /></el-form-item
       ></template>
@@ -96,7 +102,7 @@
             type="password"
             show-password
             :placeholder="
-              form.panelTokenConfigured ? '已配置，留空表示不修改' : '安装后自动生成，也可手动填写'
+              form.panelTokenConfigured ? '********************' : '安装后自动生成，也可手动填写'
             "
           />
           <div class="text-xs text-gray-500 mt-1">已保存的 Token 不显示明文，填写新值可替换。</div>
@@ -117,6 +123,8 @@ const visible = ref(false),
   loading = ref(false),
   formRef = ref()
 const title = ref('')
+// Only display the saved credential marker; keep the submitted secret empty until replaced.
+const savedSshAuthType = ref<number>()
 const credentials = ref<{ username: string; password: string }>()
 const showCredentials = async () => {
   const result = await Api.getPanelCredentials(form.value.id)
@@ -158,10 +166,12 @@ const open = async (type: string, id?: number) => {
   title.value = type === 'create' ? '新增服务器' : '编辑服务器'
   credentials.value = undefined
   form.value = empty()
+  savedSshAuthType.value = undefined
   if (id) {
     loading.value = true
     try {
       form.value = { ...form.value, ...(await Api.getServer(id)) }
+      if (form.value.sshCredentialConfigured) savedSshAuthType.value = form.value.sshAuthType
     } finally {
       loading.value = false
     }

@@ -8,7 +8,7 @@ import java.time.LocalDateTime; import java.util.List;
  @NotNull private Boolean unlimited;
  @NotNull @Min(0) @Max(9000000000000000L) private Long totalBytes;
  @NotBlank @Pattern(regexp="both|download") private String trafficMode="both";
- @NotBlank @Pattern(regexp="none|monthly|interval") private String resetMode="none";
+ @NotBlank @Pattern(regexp="none|monthly|interval|monthly_first|monthly_expiry|yearly_first|yearly_expiry") private String resetMode="none";
  @Min(1) @Max(365) private Integer resetIntervalDays=30;
  @NotNull @Min(1) @Max(20) private Integer nodeLimit=1;
  private Long regionId; private Long cityId;

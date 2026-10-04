@@ -25,12 +25,38 @@ class SubscriptionServiceTest {
   for(var entry:Map.of("subscriptions",subscriptions,"clients",clients,"assignments",assignments,"logs",logs,"orders",orders,"users",users,"gateway",gateway,"nodes",nodes).entrySet())ReflectionTestUtils.setField(service,entry.getKey(),entry.getValue());
   var manager=mock(PlatformTransactionManager.class);when(manager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());ReflectionTestUtils.setField(service,"transactionManager",manager);ReflectionTestUtils.setField(service,"tenants",mock(com.speednet.framework.common.biz.system.tenant.TenantCommonApi.class));
   for(Class<?> type:List.of(SubscriptionDO.class,SubscriptionClientDO.class,SubscriptionAssignmentDO.class))TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(),"subscription-tests"),type);
+  var accounts=mock(SubscriptionAccountService.class);when(accounts.allows(anyLong(),anyLong())).thenReturn(true);ReflectionTestUtils.setField(service,"accounts",accounts);
+  var ds=new org.h2.jdbcx.JdbcDataSource();ds.setURL("jdbc:h2:mem:pack"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1");
+  var jdbc=new org.springframework.jdbc.core.JdbcTemplate(ds);jdbc.execute("CREATE TABLE subscription_traffic_pack(id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id BIGINT,subscription_id BIGINT,purchase_id BIGINT UNIQUE,total_bytes BIGINT,remaining_bytes BIGINT)");ReflectionTestUtils.setField(service,"jdbc",jdbc);
   TenantContextHolder.setTenantId(1L);
   s=new SubscriptionDO().setId(1L).setUserId(10L).setNumber("SN-test").setStartTime(LocalDateTime.now().minusDays(1)).setExpiryTime(LocalDateTime.now().plusDays(30)).setPaused(false).setUnlimited(false).setTotalBytes(1000L).setUsedUpload(0L).setUsedDownload(0L).setLifetimeUpload(0L).setLifetimeDownload(0L).setTrafficMode("both").setResetMode("none").setResetIntervalDays(30).setNodeLimit(1).setStatus(1).setSyncStatus(0).setLastError("");s.setTenantId(1L);
   c=new SubscriptionClientDO().setId(1L).setSubscriptionId(1L).setNodeId(1L).setServerId(1L).setInboundId(1L).setEmail("sn1s1c1").setCredential("original-uuid").setProtocol("vmess").setRemoteCreated(true).setReleased(false).setSyncStatus(2).setNodeVersion(1).setSampleUpload(0L).setSampleDownload(0L).setUsedUpload(0L).setUsedDownload(0L);c.setTenantId(1L);
   when(subscriptions.lock(1L)).thenReturn(s);when(subscriptions.selectById(1L)).thenReturn(s);when(clients.selectList(any())).thenAnswer(i->new ArrayList<>(List.of(c)));
   when(users.getUser(10L)).thenReturn(new MemberUserRespDTO().setId(10L).setStatus(0).setNickname("会员"));
   when(gateway.traffic(c)).thenReturn(new SubscriptionGateway.Traffic(0,0));when(gateway.sync(eq(s),eq(c),anyBoolean())).thenReturn("vmess://fixture");when(nodes.require(1L)).thenReturn(new XrayNodeDO().setConfigVersion(1));
+ }
+ private SubscriptionCreateReqVO.Assignment entry(Long serverId, Long inboundId) {
+  ReflectionTestUtils.setField(service,"regions",mock(com.speednet.module.xray.service.node.XrayRegionService.class));
+  ReflectionTestUtils.setField(service,"cities",mock(com.speednet.module.xray.service.node.XrayCityService.class));
+  when(nodes.require(1L)).thenReturn(new XrayNodeDO().setShelfStatus(1));
+  when(gateway.inbound(serverId,inboundId)).thenReturn(Map.of("enable",true,"protocol","vmess","port",8080,"settings",Map.of(),"streamSettings",Map.of()));
+  doAnswer(i->{((SubscriptionClientDO)i.getArgument(0)).setId(99L);return 1;}).when(clients).insert(any(SubscriptionClientDO.class));
+  return new SubscriptionCreateReqVO.Assignment().setNodeId(1L).setServerId(serverId).setInboundId(inboundId).setPublicHost("entry.example.com");
+ }
+ @Test void existingExitCanGainNewServerEntryAtNodeLimit() {
+  service.assign(1L,entry(2L,1L));
+  verify(clients).insert(argThat((SubscriptionClientDO added)->added.getNodeId().equals(1L)&&added.getServerId().equals(2L)&&added.getInboundId().equals(1L)));
+  assertFalse(c.getReleased());assertEquals("original-uuid",c.getCredential());
+  verify(assignments).insert(any(SubscriptionAssignmentDO.class));
+ }
+ @Test void existingExitCanGainSecondInboundOnSameServer() {
+  service.assign(1L,entry(1L,2L));
+  verify(assignments).insert(any(SubscriptionAssignmentDO.class));
+  verify(assignments,never()).updateById(any(SubscriptionAssignmentDO.class));
+ }
+ @Test void sameExitAndEntryCannotBeAssignedTwice() {
+  assertThrows(ServiceException.class,()->service.assign(1L,entry(1L,1L)));
+  verify(clients,never()).insert(any(SubscriptionClientDO.class));
  }
  @AfterEach void close(){service.close();TenantContextHolder.clear();}
  @Test void reconciliationUsesIncrementalSamplesAndReusesUuid(){when(gateway.traffic(c)).thenReturn(new SubscriptionGateway.Traffic(20,40));service.reconcile(1L);assertEquals(20,s.getUsedUpload());assertEquals(40,s.getUsedDownload());assertEquals(60,SubscriptionPolicy.used(s));service.reconcile(1L);assertEquals(60,SubscriptionPolicy.used(s));assertEquals("original-uuid",c.getCredential());verify(gateway,times(2)).sync(s,c,true);assertEquals(2,s.getSyncStatus());}
@@ -42,6 +68,13 @@ class SubscriptionServiceTest {
  @Test void resetCapturesOldUsageBeforeStartingNewCycle(){when(gateway.traffic(c)).thenReturn(new SubscriptionGateway.Traffic(20,30));var req=new SubscriptionActionReqVO().setId(1L).setAction("reset-traffic");service.action(req);assertEquals(0,s.getUsedUpload());assertEquals(0,s.getUsedDownload());assertEquals(20,s.getLifetimeUpload());assertEquals(30,s.getLifetimeDownload());assertEquals(20,c.getSampleUpload());assertEquals("original-uuid",c.getCredential());}
  @Test void resetRefusesOfflineCounters(){when(gateway.traffic(c)).thenThrow(new IllegalStateException("offline"));assertThrows(ServiceException.class,()->service.action(new SubscriptionActionReqVO().setId(1L).setAction("reset-traffic")));verify(clients,never()).update(isNull(),any());}
  @Test void endedSubscriptionsCannotBeExtended(){s.setEndedTime(LocalDateTime.now());assertThrows(ServiceException.class,()->service.action(new SubscriptionActionReqVO().setId(1L).setAction("extend").setDays(10)));}
+ @Test void cannotExtendHistoricalSubscriptionWhenAnotherIsValid(){
+  s.setExpiryTime(LocalDateTime.now().minusDays(1));
+  var other=new SubscriptionDO().setId(2L).setUserId(10L).setExpiryTime(LocalDateTime.now().plusDays(30));
+  when(subscriptions.selectList(any())).thenReturn(List.of(s,other));
+  assertThrows(ServiceException.class,()->service.action(new SubscriptionActionReqVO().setId(1L).setAction("extend").setDays(30)));
+  verify(subscriptions,never()).updateById(any(SubscriptionDO.class));
+ }
  @Test void pendingSubscriptionDoesNotDeployBeforeStart(){s.setStartTime(LocalDateTime.now().plusDays(1));c.setRemoteCreated(false).setNodeVersion(0);service.reconcile(1L);assertEquals(0,s.getStatus());verify(gateway,never()).sync(any(),any(),anyBoolean());verifyNoInteractions(nodes);}
  @Test void managedScanRestoresTenantContextAndReportsPartialSubmission(){
   var second=new SubscriptionDO().setId(2L);second.setTenantId(2L);
@@ -73,5 +106,23 @@ class SubscriptionServiceTest {
   service.reconcile(1L);
   verify(gateway,never()).sync(s,c,true);
   assertEquals(3,s.getSyncStatus());assertTrue(s.getLastError().contains("创建失败"));
+ }
+ @Test void renewalPreservesSupplementalBalanceAndExtendsExpiry(){
+  s.setPlanId(7L).setBaseTotalBytes(1000L).setExtraUsedBytes(0L).setTotalBytes(1500L);
+  var jdbc=(org.springframework.jdbc.core.JdbcTemplate)ReflectionTestUtils.getField(service,"jdbc");jdbc.update("INSERT INTO subscription_traffic_pack(tenant_id,subscription_id,purchase_id,total_bytes,remaining_bytes) VALUES(1,1,1,500,500)");
+  var expiry=s.getExpiryTime().plusMonths(1);service.commercialChange(1L,7L,1000L,"monthly",30,"both",1,expiry,false,null);
+  assertEquals(expiry,s.getExpiryTime());assertEquals(500L,service.packRemaining(s));assertEquals(1500L,s.getTotalBytes());
+ }
+ @Test void expiredSubscriptionCannotBeRestoredByCommercialRenewal(){
+  s.setBaseTotalBytes(1000L).setExtraUsedBytes(0L).setTotalBytes(1500L).setExpiryTime(LocalDateTime.now().minusMinutes(1));
+  var jdbc=(org.springframework.jdbc.core.JdbcTemplate)ReflectionTestUtils.getField(service,"jdbc");jdbc.update("INSERT INTO subscription_traffic_pack(tenant_id,subscription_id,purchase_id,total_bytes,remaining_bytes) VALUES(1,1,1,500,500)");
+  assertThrows(ServiceException.class,()->service.commercialChange(1L,7L,1000L,"monthly",30,"both",1,LocalDateTime.now().plusMonths(1),true,null));
+  verify(gateway,never()).traffic(any());
+ }
+ @Test void cycleResetPreservesOnlyUnconsumedSupplement(){
+  s.setBaseTotalBytes(100L).setExtraUsedBytes(0L).setTotalBytes(150L).setResetMode("monthly").setNextResetTime(LocalDateTime.now().minusSeconds(1));
+  var jdbc=(org.springframework.jdbc.core.JdbcTemplate)ReflectionTestUtils.getField(service,"jdbc");jdbc.update("INSERT INTO subscription_traffic_pack(tenant_id,subscription_id,purchase_id,total_bytes,remaining_bytes) VALUES(1,1,1,50,50)");
+  when(gateway.traffic(c)).thenReturn(new SubscriptionGateway.Traffic(0,120));service.reconcile(1L);
+  assertEquals(30L,service.packRemaining(s));assertEquals(130L,s.getTotalBytes());assertEquals(0L,s.getUsedDownload());assertEquals(0L,s.getExtraUsedBytes());
  }
 }

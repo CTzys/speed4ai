@@ -30,3 +30,5 @@ custom:
   mail-from: ${CUSTOM_MAIL_FROM:no-reply@example.com}
   dev-return-code: ${CUSTOM_DEV_RETURN_CODE:false}
   cors-origin: ${CUSTOM_CORS_ORIGIN:http://localhost:5173}
+
+  backend-url: ${CUSTOM_BACKEND_URL:http://127.0.0.1:48080}

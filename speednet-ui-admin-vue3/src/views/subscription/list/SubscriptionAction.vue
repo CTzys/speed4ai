@@ -21,7 +21,7 @@
           ><el-date-picker v-model="expiryTime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss"
         /></el-form-item>
         <div class="text-gray-500 mb-3"
-          >未到期从原到期时间延长；已到期从当前时间延长。已结束的订阅不能恢复。</div
+          >仅未到期订阅可从原到期时间延长；已过期或结束的订阅不能续费，请创建新订阅。</div
         >
       </template>
       <el-form-item v-if="kind === 'add-traffic'" label="增加流量"

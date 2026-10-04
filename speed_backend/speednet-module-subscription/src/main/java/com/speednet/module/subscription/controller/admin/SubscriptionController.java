@@ -44,13 +44,13 @@ public class SubscriptionController {
  public CommonResult<Boolean> resetClient(@RequestParam Long id,@RequestParam Long clientId){service.resetCredential(id,clientId);return success(true);}
  @GetMapping("/users") @PreAuthorize("@ss.hasPermission('subscription:query')")
  public CommonResult<List<Map<String,Object>>> users(@RequestParam(required=false) @Size(max=128) String keyword){return success(service.userOptions(keyword));}
- @GetMapping("/options") @PreAuthorize("@ss.hasPermission('subscription:query')")
+ @GetMapping("/options") @PreAuthorize("@ss.hasPermission('subscription:query') or @ss.hasPermission('subscription:plan:manage')")
  public CommonResult<Map<String,Object>> options(){
   var ns=nodeMapper.selectList(new LambdaQueryWrapper<XrayNodeDO>().eq(XrayNodeDO::getShelfStatus,1).orderByDesc(XrayNodeDO::getId)).stream().map(n->{var r=new LinkedHashMap<String,Object>();r.put("id",n.getId());r.put("name",n.getName());r.put("regionId",n.getRegionId());r.put("cityId",n.getCityId());r.put("healthStatus",n.getHealthStatus());return r;}).toList();
   var ss=serverMapper.selectList().stream().filter(s->s.getPanelToken()!=null&&!s.getPanelToken().isBlank()&&s.getPanelPort()!=null).map(s->Map.of("id",s.getId(),"name",s.getName(),"host",s.getHost())).toList();
   return success(Map.of("nodes",ns,"servers",ss,"regions",regions.list(),"cities",cities.list(null)));
  }
- @GetMapping("/inbounds") @PreAuthorize("@ss.hasPermission('subscription:query')") @ApiAccessLog(responseEnable=false)
+ @GetMapping("/inbounds") @PreAuthorize("@ss.hasPermission('subscription:query') or @ss.hasPermission('subscription:plan:manage')") @ApiAccessLog(responseEnable=false)
  public CommonResult<List<Map<String,Object>>> inbounds(@RequestParam Long serverId){
   Object raw=inbounds.list(serverId);List<Map<String,Object>> result=new ArrayList<>();
   for(Object value:(List<?>)raw)if(value instanceof Map<?,?> m&&Boolean.TRUE.equals(m.get("enable"))&&Set.of("vmess","vless","trojan").contains(String.valueOf(m.get("protocol")))) {

@@ -4,6 +4,7 @@
  <parent><groupId>com.speednet</groupId><artifactId>speednet</artifactId><version>${revision}</version></parent>
  <artifactId>speednet-module-subscription</artifactId><description>用户订阅授权、客户端配置与流量管理</description>
  <dependencies>
+  <dependency><groupId>com.speednet</groupId><artifactId>speednet-module-pay</artifactId><version>${revision}</version></dependency>
   <dependency><groupId>com.speednet</groupId><artifactId>speednet-module-infra</artifactId><version>${revision}</version></dependency>
   <dependency><groupId>com.speednet</groupId><artifactId>speednet-spring-boot-starter-job</artifactId></dependency>
   <dependency><groupId>com.speednet</groupId><artifactId>speednet-module-member</artifactId><version>${revision}</version></dependency>

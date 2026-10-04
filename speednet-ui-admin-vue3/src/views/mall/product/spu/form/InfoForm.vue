@@ -26,7 +26,7 @@
       <el-button :icon="RefreshRight" @click="refreshCategoryList" class="ml-1" size="small" />
     </el-form-item>
     <el-form-item label="商品品牌" prop="brandId">
-      <el-select v-model="formData.brandId" class="w-80!" placeholder="请选择商品品牌">
+      <el-select v-model="formData.brandId" class="w-80!" clearable placeholder="选填商品品牌">
         <el-option
           v-for="item in brandList"
           :key="item.id"
@@ -98,15 +98,7 @@ const sliderPicUrls = computed({
     formData.sliderPicUrls = value
   }
 })
-const rules = reactive({
-  name: [required],
-  categoryId: [required],
-  keyword: [required],
-  introduction: [required],
-  picUrl: [required],
-  sliderPicUrls: [required],
-  brandId: [required]
-})
+const rules = reactive({ name: [required] })
 
 /** 将传进来的值赋值给 formData */
 watch(

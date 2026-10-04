@@ -47,7 +47,7 @@
           Api.time(detail.subscription.lastSyncTime)
         }}</el-descriptions-item>
         <el-descriptions-item label="节点数量"
-          >{{ detail.subscription.clientCount }} /
+          >{{ detail.subscription.nodeCount ?? detail.subscription.clientCount }} /
           {{ detail.subscription.nodeLimit }}</el-descriptions-item
         >
         <el-descriptions-item label="备注" :span="3">{{
@@ -72,9 +72,9 @@
         <el-button
           v-if="detail.subscription.status !== 5"
           v-hasPermi="['subscription:assign']"
-          :disabled="detail.subscription.clientCount >= detail.subscription.nodeLimit"
+          :disabled="!detail.clients.some((c) => !c.released)"
           @click="openAssign"
-          >分配节点</el-button
+          >添加入站 / 客户端</el-button
         >
       </div>
       <div v-if="feedLink" class="mt-3"
@@ -176,16 +176,73 @@
     </div>
     <template #footer><el-button @click="visible = false">关闭</el-button></template>
   </Dialog>
-  <Dialog v-model="assignVisible" title="分配节点" width="1050px">
-    <AssignmentFields
-      v-model="newAssignments"
-      :options="options"
-      :region-id="detail?.subscription.regionId"
-      :city-id="detail?.subscription.cityId"
+  <Dialog
+    v-model="assignVisible"
+    title="添加入站 / 客户端"
+    width="1050px"
+    :close-on-click-modal="!loading"
+  >
+    <el-alert
+      type="info"
+      :closable="false"
+      class="mb-4"
+      :title="`为订阅 ${detail?.subscription.number || ''} 添加入站客户端，原订阅链接保持不变。同步完成后，用户更新订阅即可获取新节点。`"
     />
+    <el-form label-width="120px">
+      <el-form-item label="已有出口节点">
+        <el-select
+          v-model="selectedNodeIds"
+          multiple
+          filterable
+          class="w-full"
+          placeholder="选择当前订阅的出口节点"
+        >
+          <el-option
+            v-for="node in existingNodes"
+            :key="node.id"
+            :value="node.id"
+            :label="node.name"
+          />
+        </el-select>
+        <el-button class="mt-2" @click="selectedNodeIds = existingNodes.map((n) => n.id)"
+          >全选已有出口节点</el-button
+        >
+      </el-form-item>
+      <el-form-item label="新入口服务器">
+        <el-select v-model="targetServerId" filterable class="w-full" @change="changeTargetServer">
+          <el-option
+            v-for="server in options.servers"
+            :key="server.id"
+            :value="server.id"
+            :label="server.name"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="新入站">
+        <el-select
+          v-model="targetInboundId"
+          :disabled="!targetServerId"
+          :loading="inboundsLoading"
+          class="w-full"
+        >
+          <el-option
+            v-for="row in targetInbounds"
+            :key="row.id"
+            :value="row.id"
+            :label="`${row.remark || '入站'} · ${row.protocol} :${row.port}`"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="用户连接地址"
+        ><el-input v-model="targetHost" placeholder="新服务器的域名或 IP"
+      /></el-form-item>
+      <div class="text-gray-500"
+        >会为选中的每个已有出口节点创建新入站客户端，保留旧入口和认证信息，不增加出口节点数量。已关联此入站的节点会跳过。</div
+      >
+    </el-form>
     <template #footer
-      ><el-button @click="assignVisible = false">取消</el-button
-      ><el-button type="primary" :loading="loading" @click="assign">保存分配</el-button></template
+      ><el-button :disabled="loading" @click="assignVisible = false">取消</el-button
+      ><el-button type="primary" :loading="loading" @click="assign">确认添加</el-button></template
     >
   </Dialog>
   <Dialog v-model="credentialVisible" title="客户端认证" width="600px">
@@ -210,7 +267,6 @@
 </template>
 <script setup lang="ts">
 import * as Api from '@/api/subscription'
-import AssignmentFields from './AssignmentFields.vue'
 const message = useMessage()
 const emit = defineEmits(['success'])
 const visible = ref(false),
@@ -256,7 +312,33 @@ const resetClient = async (client: Api.ClientVO) => {
     loading.value = false
   }
 }
-const newAssignments = ref<Api.Assignment[]>([{ publicHost: '' }])
+const selectedNodeIds = ref<number[]>([])
+const targetServerId = ref<number>(),
+  targetInboundId = ref<number>(),
+  targetHost = ref('')
+const targetInbounds = ref<Awaited<ReturnType<typeof Api.getInbounds>>>([])
+const inboundsLoading = ref(false)
+const existingNodes = computed(() => {
+  const nodes = new Map<number, { id: number; name: string }>()
+  for (const client of detail.value?.clients || [])
+    if (!client.released) nodes.set(client.nodeId, { id: client.nodeId, name: client.nodeName })
+  return [...nodes.values()]
+})
+let inboundRequest = 0
+const changeTargetServer = async () => {
+  const request = ++inboundRequest
+  targetInboundId.value = undefined
+  targetInbounds.value = []
+  targetHost.value = options.value.servers.find((s) => s.id === targetServerId.value)?.host || ''
+  if (!targetServerId.value) return
+  inboundsLoading.value = true
+  try {
+    const result = await Api.getInbounds(targetServerId.value)
+    if (request === inboundRequest) targetInbounds.value = result
+  } finally {
+    if (request === inboundRequest) inboundsLoading.value = false
+  }
+}
 const orderPurpose = { create: '来源订单', extend: '续费', 'add-traffic': '增加流量' }
 const refresh = async () => {
   if (!id.value) return
@@ -269,6 +351,7 @@ const refresh = async () => {
   }
 }
 const open = async (value: number) => {
+  assignVisible.value = false
   ++logRequest
   logs.value = []
   logTotal.value = 0
@@ -309,28 +392,76 @@ const release = async (client: Api.ClientVO) => {
   emit('success')
 }
 const openAssign = async () => {
+  if (!detail.value || detail.value.subscription.status === 5) return
   options.value = await Api.getOptions()
-  const owned = detail.value!.clients.filter((c) => !c.released).map((c) => c.nodeId)
-  options.value.nodes = options.value.nodes.filter((n) => !owned.includes(n.id))
-  newAssignments.value = [{ publicHost: '' }]
+  selectedNodeIds.value = existingNodes.value.map((n) => n.id)
+  targetServerId.value = undefined
+  targetInboundId.value = undefined
+  targetHost.value = ''
+  targetInbounds.value = []
+  ++inboundRequest
+  inboundsLoading.value = false
   assignVisible.value = true
 }
 const assign = async () => {
-  const a = newAssignments.value[0]
-  if (!a?.nodeId || !a.serverId || !a.inboundId || !a.publicHost.trim()) {
-    message.warning('请完整填写节点、服务器、入站和连接地址')
+  if (loading.value || !detail.value) return
+  if (
+    !selectedNodeIds.value.length ||
+    !targetServerId.value ||
+    !targetInboundId.value ||
+    !targetHost.value.trim()
+  ) {
+    message.warning('请选择已有出口节点、新服务器、入站并填写连接地址')
     return
   }
+  const pending = selectedNodeIds.value
+    .filter(
+      (nodeId) =>
+        !detail.value!.clients.some(
+          (c) =>
+            !c.released &&
+            c.nodeId === nodeId &&
+            c.serverId === targetServerId.value &&
+            c.inboundId === targetInboundId.value
+        )
+    )
+    .map((nodeId) => ({
+      nodeId,
+      serverId: targetServerId.value!,
+      inboundId: targetInboundId.value!,
+      publicHost: targetHost.value.trim()
+    }))
+  if (!pending.length) {
+    message.warning('选中的出口节点已关联此入站')
+    return
+  }
+  const subscriptionId = id.value!
   loading.value = true
+  let completed = 0
   try {
-    await Api.assign(id.value!, a)
-    assignVisible.value = false
-    message.success('已保存节点分配')
+    for (const assignment of pending) {
+      try {
+        await Api.assign(subscriptionId, assignment)
+        completed++
+      } catch {
+        selectedNodeIds.value = pending.slice(completed).map((a) => a.nodeId)
+        message.warning(`已添加 ${completed} 个客户端，其余未完成，请处理错误后重试`)
+        break
+      }
+    }
+    if (completed === pending.length) {
+      assignVisible.value = false
+      message.success(`已添加 ${completed} 个新入口客户端，旧入口保留；同步完成后请更新原订阅`)
+    }
     await refresh()
     emit('success')
   } finally {
     loading.value = false
   }
 }
-defineExpose({ open })
+const openAddInbound = async (value: number) => {
+  await open(value)
+  await openAssign()
+}
+defineExpose({ open, openAddInbound })
 </script>

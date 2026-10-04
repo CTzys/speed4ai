@@ -27,6 +27,8 @@ import static com.speednet.framework.common.exception.util.ServiceExceptionUtil.
 @Service
 public class SubscriptionService {
     private static final ErrorCode INVALID=new ErrorCode(1_013_000_000,"订阅操作失败：{}");
+    @Resource private SubscriptionAccountService accounts;
+    @Resource private org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Resource private SubscriptionMapper subscriptions;
     @Resource private SubscriptionClientMapper clients;
     @Resource private SubscriptionAssignmentMapper assignments;
@@ -51,6 +53,7 @@ public class SubscriptionService {
     private int effectiveStatus(SubscriptionDO s) {
         int result=SubscriptionPolicy.status(s,LocalDateTime.now());
         if(result==SubscriptionPolicy.ACTIVE){
+            if(!accounts.allows(s.getUserId(),s.getId()))return SubscriptionPolicy.PAUSED;
             try {tenants.validateTenant(TenantContextHolder.getRequiredTenantId());}catch(RuntimeException e){return SubscriptionPolicy.PAUSED;}
             var u=users.getUser(s.getUserId());if(u==null||!Integer.valueOf(0).equals(u.getStatus()))return SubscriptionPolicy.PAUSED;}
         return result;
@@ -58,7 +61,7 @@ public class SubscriptionService {
     public Long create(SubscriptionCreateReqVO req) {
         enabledUser(req.getUserId());
         if(!req.getExpiryTime().isAfter(req.getStartTime())||!req.getExpiryTime().isAfter(LocalDateTime.now()))throw invalid("到期时间应晚于开始时间和当前时间");
-        if(!req.getUnlimited()&&req.getTotalBytes()<=0)throw invalid("有限流量订阅的额度必须大于零");
+        if(!req.getUnlimited()&&req.getTotalBytes()<0)throw invalid("有限流量订阅的额度不能为负");
         if(req.getAssignments().size()>req.getNodeLimit())throw invalid("分配数量超过节点数量上限");
         if("interval".equals(req.getResetMode())&&req.getResetIntervalDays()==null)throw invalid("请填写流量重置间隔天数");
         if(req.getRegionId()!=null)regions.validateSelection(req.getRegionId(),null);
@@ -69,12 +72,16 @@ public class SubscriptionService {
             prepared.add(prepare(a,req.getRegionId(),req.getCityId()));
         }
         Long id=transaction(()->{
+            accounts.lock(req.getUserId());
+            var previous=subscriptions.selectList(new LambdaQueryWrapper<SubscriptionDO>().eq(SubscriptionDO::getUserId,req.getUserId()));
+            if(previous.stream().anyMatch(old->old.getEndedTime()==null&&old.getExpiryTime().isAfter(LocalDateTime.now())))throw invalid("该用户已有有效订阅，请续订或升级当前订阅");
             var s=BeanUtils.toBean(req,SubscriptionDO.class).setNumber("SN"+UUID.randomUUID().toString().replace("-","")).setSource("admin")
                 .setOrderNo(blank(req.getOrderNo())).setPaused(false).setSyncStatus(0).setLastError("")
                 .setUsedUpload(0L).setUsedDownload(0L).setLifetimeUpload(0L).setLifetimeDownload(0L);
             String token=SubscriptionPolicy.token();s.setToken(token).setTokenHash(SubscriptionPolicy.hash(token));
             s.setStatus(SubscriptionPolicy.status(s,LocalDateTime.now())).setNextResetTime(SubscriptionPolicy.nextReset(s,s.getStartTime()));
             subscriptions.insert(s);
+            accounts.bind(req.getUserId(),s.getId());
             for(var c:prepared)insertClient(s,c);
             if(s.getOrderNo()!=null)order(s.getId(),s.getOrderNo(),"create");
             log(s.getId(),"create","后台创建订阅，等待生效并配置服务器",0,0,true);
@@ -95,19 +102,19 @@ public class SubscriptionService {
     private void insertClient(SubscriptionDO s,SubscriptionClientDO c) {
         c.setSubscriptionId(s.getId()).setEmail("pending-"+UUID.randomUUID());clients.insert(c);
         c.setEmail("sn"+TenantContextHolder.getRequiredTenantId()+"s"+s.getId()+"c"+c.getId());clients.updateById(c);
-        var a=assignments.selectOne(new LambdaQueryWrapper<SubscriptionAssignmentDO>().eq(SubscriptionAssignmentDO::getSubscriptionId,s.getId()).eq(SubscriptionAssignmentDO::getNodeId,c.getNodeId()).eq(SubscriptionAssignmentDO::getServerId,c.getServerId()));
-        if(a==null)a=new SubscriptionAssignmentDO().setNodeId(c.getNodeId()).setServerId(c.getServerId()).setUserId(s.getUserId()).setSubscriptionId(s.getId());
+        var a=new SubscriptionAssignmentDO().setNodeId(c.getNodeId()).setServerId(c.getServerId()).setUserId(s.getUserId()).setSubscriptionId(s.getId());
         a.setClientId(c.getId()).setAssignedTime(c.getAssignedTime()).setExpiryTime(s.getExpiryTime()).setSubscriptionStatus(1).setAuthorizationStatus(0);
-        if(a.getId()==null)assignments.insert(a);else assignments.updateById(a);
+        assignments.insert(a);
     }
     public void action(SubscriptionActionReqVO req) {
         transaction(()->{
+            accounts.lock(require(req.getId()).getUserId(),"end".equals(req.getAction()));
             var s=lock(req.getId());
             if(s.getEndedTime()!=null&&!Set.of("reset-link","remark").contains(req.getAction()))throw invalid("已结束订阅不能重新启用，请创建新订阅");
             String message;
             switch(req.getAction()) {
-                case "extend" -> {try{s.setExpiryTime(SubscriptionPolicy.extend(s,req.getDays(),req.getExpiryTime(),LocalDateTime.now()));}catch(IllegalArgumentException e){throw invalid(e.getMessage());}message="到期时间延长至 "+s.getExpiryTime();}
-                case "add-traffic" -> {if(Boolean.TRUE.equals(s.getUnlimited()))throw invalid("无限流量订阅无需增加额度");if(req.getBytes()==null)throw invalid("请填写增加的流量");long next=Math.addExact(s.getTotalBytes(),req.getBytes());if(next>9000000000000000L)throw invalid("流量额度超出范围");s.setTotalBytes(next);message="增加流量 "+req.getBytes()+" 字节";}
+                case "extend" -> {if(subscriptions.selectList(new LambdaQueryWrapper<SubscriptionDO>().eq(SubscriptionDO::getUserId,s.getUserId())).stream().anyMatch(other->!other.getId().equals(s.getId())&&other.getEndedTime()==null&&other.getExpiryTime().isAfter(LocalDateTime.now())))throw invalid("该用户已有其他有效订阅，不能延长此订阅");expirePacks(s);try{s.setExpiryTime(SubscriptionPolicy.extend(s,req.getDays(),req.getExpiryTime(),LocalDateTime.now()));}catch(IllegalArgumentException e){throw invalid(e.getMessage());}message="到期时间延长至 "+s.getExpiryTime();}
+                case "add-traffic" -> {if(Boolean.TRUE.equals(s.getUnlimited()))throw invalid("无限流量订阅无需增加额度");if(req.getBytes()==null)throw invalid("请填写增加的流量");long next=Math.addExact(s.getTotalBytes(),req.getBytes());if(next>9000000000000000L)throw invalid("流量额度超出范围");s.setTotalBytes(next);if(s.getBaseTotalBytes()!=null)s.setBaseTotalBytes(Math.addExact(s.getBaseTotalBytes(),req.getBytes()));message="增加流量 "+req.getBytes()+" 字节";}
                 case "reset-traffic" -> {if(!collect(s))throw invalid("流量采集失败，请先恢复服务器连接再重置，避免旧流量计入新周期");reset(s,"reset-traffic");message="已重置当前周期流量，历史使用量保留";}
                 case "end" -> {s.setEndedTime(LocalDateTime.now());message="订阅已结束，等待撤销服务器客户端";}
                 case "pause" -> {s.setPaused(true);message="暂停订阅，不顺延到期时间";}
@@ -121,6 +128,7 @@ public class SubscriptionService {
             s.setStatus(effectiveStatus(s));
             if(!Set.of("reset-link","remark").contains(req.getAction()))s.setSyncStatus(0);
             subscriptions.updateById(s);
+            if(!Set.of("reset-link","remark").contains(req.getAction()))accounts.changed(s.getUserId());
             assignments.update(null,new LambdaUpdateWrapper<SubscriptionAssignmentDO>().eq(SubscriptionAssignmentDO::getSubscriptionId,s.getId()).set(SubscriptionAssignmentDO::getExpiryTime,s.getExpiryTime()).set(SubscriptionAssignmentDO::getSubscriptionStatus,s.getStatus()==1?0:1));
             log(s.getId(),req.getAction(),message,0,0,true);return null;
         });
@@ -129,17 +137,17 @@ public class SubscriptionService {
     public void assign(Long id,SubscriptionCreateReqVO.Assignment req) {
         var old=require(id);var prepared=prepare(req,old.getRegionId(),old.getCityId());
         transaction(()->{
-            var s=lock(id);if(s.getEndedTime()!=null)throw invalid("已结束订阅不能分配节点");
+            accounts.lock(old.getUserId());var s=lock(id);if(s.getEndedTime()!=null)throw invalid("已结束订阅不能分配节点");
             var list=clientList(id);
-            if(list.stream().filter(c->!c.getReleased()).count()>=s.getNodeLimit())throw invalid("已达到节点数量上限，请先释放原节点");
-            if(list.stream().anyMatch(c->!c.getReleased()&&c.getNodeId().equals(req.getNodeId())))throw invalid("该节点已分配给订阅");
-            insertClient(s,prepared);s.setSyncStatus(0);subscriptions.updateById(s);log(id,"assign","新增节点分配 "+req.getNodeId(),0,0,true);return null;
+            if(list.stream().noneMatch(c->!c.getReleased()&&c.getNodeId().equals(req.getNodeId())) && list.stream().filter(c->!c.getReleased()).map(SubscriptionClientDO::getNodeId).distinct().count()>=s.getNodeLimit())throw invalid("已达到节点数量上限，请先释放原节点");
+            if(list.stream().anyMatch(c->!c.getReleased()&&c.getNodeId().equals(req.getNodeId())&&c.getServerId().equals(req.getServerId())&&c.getInboundId().equals(req.getInboundId())))throw invalid("该出口节点已关联此服务器入站，请勿重复添加");
+            insertClient(s,prepared);accounts.changed(s.getUserId());s.setSyncStatus(0);subscriptions.updateById(s);log(id,"assign","新增节点分配 "+req.getNodeId(),0,0,true);return null;
         });enqueue(id);
     }
     public void release(Long id,Long clientId) {
         transaction(()->{
-            var s=lock(id);var c=clients.selectById(clientId);if(c==null||!id.equals(c.getSubscriptionId()))throw invalid("客户端不属于该订阅");
-            if(!c.getReleased()){c.setReleased(true).setReleasedTime(LocalDateTime.now()).setSyncStatus(0);clients.updateById(c);s.setSyncStatus(0);subscriptions.updateById(s);log(id,"release","释放节点 "+c.getNodeId()+"，等待撤销客户端",0,0,true);}return null;
+            accounts.lock(require(id).getUserId(),true);var s=lock(id);var c=clients.selectById(clientId);if(c==null||!id.equals(c.getSubscriptionId()))throw invalid("客户端不属于该订阅");
+            if(!c.getReleased()){accounts.changed(s.getUserId());c.setReleased(true).setReleasedTime(LocalDateTime.now()).setSyncStatus(0);clients.updateById(c);s.setSyncStatus(0);subscriptions.updateById(s);log(id,"release","释放节点 "+c.getNodeId()+"，等待撤销客户端",0,0,true);}return null;
         });enqueue(id);
     }
     public Map<String,String> credentials(Long id,Long clientId) {
@@ -174,6 +182,17 @@ public class SubscriptionService {
                 upload=Math.addExact(upload,du);download=Math.addExact(download,dd);
             } catch(Exception e){complete=false;}
         }
+        if(s.getBaseTotalBytes()!=null) {
+            long increment="download".equals(s.getTrafficMode())?download:Math.addExact(upload,download);
+            long extra=Math.max(0,Math.addExact(SubscriptionPolicy.used(s),increment)-s.getBaseTotalBytes())-Math.max(0,SubscriptionPolicy.used(s)-s.getBaseTotalBytes());
+            long consumed=0;
+            for(var pack:jdbc.queryForList("SELECT id,remaining_bytes FROM subscription_traffic_pack WHERE tenant_id=? AND subscription_id=? AND remaining_bytes>0 ORDER BY id FOR UPDATE",s.getTenantId(),s.getId())) {
+                long take=Math.min(extra,((Number)pack.get("remaining_bytes")).longValue());
+                jdbc.update("UPDATE subscription_traffic_pack SET remaining_bytes=remaining_bytes-? WHERE tenant_id=? AND id=?",take,s.getTenantId(),pack.get("id"));extra-=take;consumed+=take;
+                if(extra==0)break;
+            }
+            s.setExtraUsedBytes((s.getExtraUsedBytes()==null?0:s.getExtraUsedBytes())+consumed);
+        }
         s.setUsedUpload(Math.addExact(s.getUsedUpload(),upload)).setUsedDownload(Math.addExact(s.getUsedDownload(),download))
             .setLifetimeUpload(Math.addExact(s.getLifetimeUpload(),upload)).setLifetimeDownload(Math.addExact(s.getLifetimeDownload(),download));
         if(complete)s.setLastTrafficTime(LocalDateTime.now());
@@ -182,16 +201,65 @@ public class SubscriptionService {
     }
     private void reset(SubscriptionDO s,String action) {
         log(s.getId(),"cycle-end","流量周期结束，重置前使用量",s.getUsedUpload(),s.getUsedDownload(),true);
+        if(s.getBaseTotalBytes()!=null) {
+            s.setTotalBytes(Math.addExact(s.getBaseTotalBytes(),packRemaining(s))).setExtraUsedBytes(0L);
+        }
         s.setUsedUpload(0L).setUsedDownload(0L);
         clients.update(null,new LambdaUpdateWrapper<SubscriptionClientDO>().eq(SubscriptionClientDO::getSubscriptionId,s.getId()).set(SubscriptionClientDO::getUsedUpload,0L).set(SubscriptionClientDO::getUsedDownload,0L));
         LocalDateTime next=s.getNextResetTime();
         if(next!=null) {
-            while(!next.isAfter(LocalDateTime.now()))next=SubscriptionPolicy.nextReset(s,next);
+            while(next!=null&&!next.isAfter(LocalDateTime.now()))next=SubscriptionPolicy.nextReset(s,next);
             s.setNextResetTime(next);
         }
     }
+    public long packRemaining(SubscriptionDO s) {
+        Long value=jdbc.queryForObject("SELECT COALESCE(SUM(remaining_bytes),0) FROM subscription_traffic_pack WHERE tenant_id=? AND subscription_id=?",Long.class,s.getTenantId(),s.getId());return value==null?0:value;
+    }
+    private void expirePacks(SubscriptionDO s) {
+        if(s.getBaseTotalBytes()!=null&&!s.getExpiryTime().isAfter(LocalDateTime.now())) {
+            jdbc.update("UPDATE subscription_traffic_pack SET remaining_bytes=0 WHERE tenant_id=? AND subscription_id=?",s.getTenantId(),s.getId());
+            s.setTotalBytes(s.getBaseTotalBytes()).setExtraUsedBytes(0L);
+        }
+    }
+    /** Caller holds the unique user account lock and runs in the same database transaction. */
+    public void commercialChange(long id,Long plan,long base,String mode,int interval,String traffic,int limit,LocalDateTime expiry,boolean resetCycle,List<SubscriptionCreateReqVO.Assignment> target) {
+        var s=lock(id);
+        boolean ruleChanged=!Objects.equals(s.getResetMode(),mode)||s.getResetIntervalDays()!=interval;
+        if(s.getEndedTime()!=null||!s.getExpiryTime().isAfter(LocalDateTime.now()))throw invalid("订阅已过期或结束，不能续费，请购买新订阅");
+        if(!collect(s))throw invalid("流量采集失败，暂不能变更订阅，请稍后重试");
+        expirePacks(s);
+        if(resetCycle)reset(s,"purchase");
+        s.setPlanId(plan).setBaseTotalBytes(base).setTrafficMode(traffic).setResetMode(mode).setResetIntervalDays(interval).setNodeLimit(limit).setExpiryTime(expiry);
+        s.setTotalBytes(Math.addExact(base,Math.addExact(packRemaining(s),s.getExtraUsedBytes()==null?0:s.getExtraUsedBytes())));
+        if(resetCycle)s.setStartTime(LocalDateTime.now());
+        if(resetCycle||ruleChanged||"none".equals(mode))s.setNextResetTime(SubscriptionPolicy.nextReset(s,LocalDateTime.now()));
+        if(target!=null) {
+            var old=clientList(id);
+            for(var c:old)if(!c.getReleased()&&target.stream().noneMatch(a->a.getNodeId().equals(c.getNodeId())&&a.getServerId().equals(c.getServerId())&&a.getInboundId().equals(c.getInboundId())&&a.getPublicHost().equals(c.getPublicHost()))) {c.setReleased(true).setReleasedTime(LocalDateTime.now());clients.updateById(c);}
+            for(var a:target)if(old.stream().noneMatch(c->!c.getReleased()&&c.getNodeId().equals(a.getNodeId())&&c.getServerId().equals(a.getServerId())&&c.getInboundId().equals(a.getInboundId())&&c.getPublicHost().equals(a.getPublicHost())))insertClient(s,prepare(a,null,null));
+        }
+        s.setStatus(effectiveStatus(s)).setSyncStatus(0);subscriptions.updateById(s);
+        log(id,"purchase","套餐订单变更权益，等待服务器核对",0,0,true);
+    }
+    public void commercialReset(long id){var s=require(id);if(s.getEndedTime()!=null||!s.getExpiryTime().isAfter(LocalDateTime.now()))throw invalid("当前订阅已到期");var req=new SubscriptionActionReqVO();req.setId(id);req.setAction("reset-traffic");action(req);}
+    public void commercialTraffic(long id,long purchase,long bytes) {
+        var s=lock(id);if(s.getEndedTime()!=null||!s.getExpiryTime().isAfter(LocalDateTime.now()))throw invalid("当前订阅已到期");
+        if(!collect(s))throw invalid("流量采集失败，暂不能加购");
+        jdbc.update("INSERT INTO subscription_traffic_pack (tenant_id,subscription_id,purchase_id,total_bytes,remaining_bytes) VALUES (?,?,?,?,?)",s.getTenantId(),id,purchase,bytes,bytes);
+        s.setTotalBytes(Math.addExact(s.getTotalBytes(),bytes)).setSyncStatus(0).setStatus(effectiveStatus(s));subscriptions.updateById(s);
+        log(id,"add-traffic","订单补充流量 "+bytes+" 字节",0,0,true);
+    }
     public boolean enqueue(Long id) {
-        require(id);Long tenant=TenantContextHolder.getRequiredTenantId();String key=tenant+":"+id;
+        require(id);Long tenant=TenantContextHolder.getRequiredTenantId();
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
+                @Override public void afterCommit(){enqueueCommitted(id,tenant);}
+            });return true;
+        }
+        return enqueueCommitted(id,tenant);
+    }
+    private boolean enqueueCommitted(Long id,Long tenant) {
+        String key=tenant+":"+id;
         if(!queued.add(key))return true;
         try {executor.execute(()->{try{TenantUtils.execute(tenant,()->reconcile(id));}finally{queued.remove(key);}});return true;}
         catch(RejectedExecutionException e){queued.remove(key);return false;}
@@ -288,6 +356,7 @@ public class SubscriptionService {
         r.put("startTime",s.getStartTime());r.put("expiryTime",s.getExpiryTime());r.put("endedTime",s.getEndedTime());r.put("status",effectiveStatus(s));r.put("syncStatus",s.getSyncStatus());r.put("lastError",s.getLastError());
         r.put("unlimited",s.getUnlimited());r.put("totalBytes",s.getTotalBytes());r.put("usedUpload",s.getUsedUpload());r.put("usedDownload",s.getUsedDownload());r.put("usedBytes",SubscriptionPolicy.used(s));r.put("remainingBytes",s.getUnlimited()?null:Math.max(0,s.getTotalBytes()-SubscriptionPolicy.used(s)));
         r.put("lifetimeUpload",s.getLifetimeUpload());r.put("lifetimeDownload",s.getLifetimeDownload());r.put("trafficMode",s.getTrafficMode());r.put("resetMode",s.getResetMode());r.put("resetIntervalDays",s.getResetIntervalDays());r.put("nextResetTime",s.getNextResetTime());r.put("nodeLimit",s.getNodeLimit());r.put("regionId",s.getRegionId());r.put("cityId",s.getCityId());r.put("remark",s.getRemark());r.put("createTime",s.getCreateTime());r.put("lastTrafficTime",s.getLastTrafficTime());r.put("lastSyncTime",s.getLastSyncTime());
+        r.put("nodeCount",clientList(s.getId()).stream().filter(c->!c.getReleased()).map(SubscriptionClientDO::getNodeId).distinct().count());
         r.put("clientCount",clients.selectCount(new LambdaQueryWrapper<SubscriptionClientDO>().eq(SubscriptionClientDO::getSubscriptionId,s.getId()).eq(SubscriptionClientDO::getReleased,false)));
         return r;
     }

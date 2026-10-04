@@ -376,7 +376,7 @@ const remainingRouter: AppRouteRecordRaw[] = [
     children: [
       {
         path: 'spu/add',
-        component: () => import('@/views/mall/product/spu/form/index.vue'),
+        redirect: '/subscription/plans',
         name: 'ProductSpuAdd',
         meta: {
           noCache: false, // 需要缓存
@@ -384,12 +384,12 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           icon: 'ep:edit',
           title: '商品添加',
-          activeMenu: '/mall/product/spu'
+          activeMenu: '/subscription/plans'
         }
       },
       {
         path: 'spu/edit/:id(\\d+)',
-        component: () => import('@/views/mall/product/spu/form/index.vue'),
+        redirect: '/subscription/plans',
         name: 'ProductSpuEdit',
         meta: {
           noCache: true,
@@ -397,12 +397,12 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           icon: 'ep:edit',
           title: '商品编辑',
-          activeMenu: '/mall/product/spu'
+          activeMenu: '/subscription/plans'
         }
       },
       {
         path: 'spu/detail/:id(\\d+)',
-        component: () => import('@/views/mall/product/spu/form/index.vue'),
+        redirect: '/subscription/plans',
         name: 'ProductSpuDetail',
         meta: {
           noCache: true,
@@ -410,7 +410,7 @@ const remainingRouter: AppRouteRecordRaw[] = [
           canTo: true,
           icon: 'ep:view',
           title: '商品详情',
-          activeMenu: '/mall/product/spu'
+          activeMenu: '/subscription/plans'
         }
       },
       {

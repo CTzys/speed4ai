@@ -13,6 +13,17 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class XrayInstallServiceImplTest {
+    @Test void installationPassesPortBelowTenThousand() throws Exception {
+        service.executeTask(8L);
+        var command = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(ssh, atLeastOnce()).execute(eq(server), command.capture(), any(), nullable(String.class));
+        String installer = command.getAllValues().stream().filter(value -> value.contains("install.sh"))
+                .findFirst().orElseThrow();
+        var match = java.util.regex.Pattern.compile("XUI_PANEL_PORT=(\\d+)").matcher(installer);
+        org.junit.jupiter.api.Assertions.assertTrue(match.find());
+        int port = Integer.parseInt(match.group(1));
+        org.junit.jupiter.api.Assertions.assertTrue(port >= 1024 && port < 10000);
+    }
     private final XrayInstallServiceImpl service = new XrayInstallServiceImpl();
     private final XrayServerMapper servers = mock(XrayServerMapper.class);
     private final XrayInstallTaskMapper tasks = mock(XrayInstallTaskMapper.class);
@@ -66,6 +77,8 @@ class XrayInstallServiceImplTest {
     }
 
     @Test void manualSyncReadsInstalledServerWithoutCreatingInstallationTask() throws Exception {
+        when(ssh.execute(eq(server), contains("install-result.env"), any(), nullable(String.class)))
+                .thenReturn(new SshExecutor.CommandResult(0, "Username: test-admin\nPassword: test-password\n"));
         server.setPanelToken("existing-token");
         when(ssh.execute(eq(server), contains("-show true"), any(), nullable(String.class)))
                 .thenReturn(new SshExecutor.CommandResult(0, "Panel is secure with SSL\nport: 2053\nwebBasePath: /secret/\n"));

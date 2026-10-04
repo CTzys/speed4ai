@@ -275,9 +275,11 @@ const submit = async () => {
       useMessage().warning('请先完善目标服务器的面板连接信息和 API Token')
       return
     }
-    if (config.id) await Api.updateInbound({ serverId: targetId, id: config.id, config })
-    else await Api.createInbound({ serverId: targetId, config })
-    useMessage().success('入站已保存到服务器')
+    const warning = config.id
+      ? await Api.updateInbound({ serverId: targetId, id: config.id, config })
+      : await Api.createInbound({ serverId: targetId, config })
+    if (typeof warning === 'string' && warning) useMessage().warning(warning)
+    else useMessage().success('入站已保存到服务器')
     visible.value = false
     emit('success', targetId)
   } finally {

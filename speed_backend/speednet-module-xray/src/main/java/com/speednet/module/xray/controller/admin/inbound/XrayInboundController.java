@@ -23,9 +23,9 @@ public class XrayInboundController {
     @GetMapping("/get") @PreAuthorize("@ss.hasPermission('xray:inbound:query')")
     public CommonResult<Object> get(@RequestParam @Positive Long serverId, @RequestParam @Positive Long id) { return success(service.get(serverId, id)); }
     @PostMapping("/create") @PreAuthorize("@ss.hasPermission('xray:inbound:create')")
-    public CommonResult<Boolean> create(@Valid @RequestBody XrayInboundSaveReqVO request) { service.save(request, false); return success(true); }
+    public CommonResult<String> create(@Valid @RequestBody XrayInboundSaveReqVO request) { return success(service.save(request, false)); }
     @PutMapping("/update") @PreAuthorize("@ss.hasPermission('xray:inbound:update')")
-    public CommonResult<Boolean> update(@Valid @RequestBody XrayInboundSaveReqVO request) { service.save(request, true); return success(true); }
+    public CommonResult<String> update(@Valid @RequestBody XrayInboundSaveReqVO request) { return success(service.save(request, true)); }
     @DeleteMapping("/delete") @PreAuthorize("@ss.hasPermission('xray:inbound:delete')")
     public CommonResult<Boolean> delete(@RequestParam @Positive Long serverId, @RequestParam @Positive Long id) { service.delete(serverId, id); return success(true); }
 }

@@ -13,7 +13,10 @@ class XrayFirewallTest {
         assertTrue(file.toFile().setExecutable(true));
     }
     private String run() throws Exception {
-        var builder = new ProcessBuilder("/bin/sh", "-c", XrayFirewall.command(3706));
+        return run("tcp");
+    }
+    private String run(String transport) throws Exception {
+        var builder = new ProcessBuilder("/bin/sh", "-c", XrayFirewall.command(3706, transport));
         builder.environment().put("PATH", directory + ":/usr/bin:/bin");
         builder.environment().put("CALLS", directory.resolve("calls").toString());
         var process = builder.redirectErrorStream(true).start();
@@ -43,8 +46,25 @@ class XrayFirewallTest {
         tool("iptables", "exit 91");
         assertTrue(run().contains("SPEEDNET_FIREWALL_MANUAL"));
     }
+    @Test void inactiveUfwDoesNotPreventFirewalldDefaultZoneRules() throws Exception {
+        tool("ufw", "if [ \"$1\" = status ]; then echo \"Status: inactive\"; else exit 91; fi");
+        tool("firewall-cmd", "echo \"$*\" >> \"$CALLS\"; case \"$1\" in --state) echo running;; --get-default-zone) echo public;; esac");
+        assertTrue(run().contains("SPEEDNET_FIREWALL_OPENED"));
+        String calls = Files.readString(directory.resolve("calls"));
+        assertTrue(calls.contains("--get-default-zone"));
+        assertTrue(calls.contains("--zone=public --add-port=3706/tcp"));
+        assertTrue(calls.contains("--permanent --zone=public --add-port=3706/tcp"));
+        assertTrue(calls.contains("--zone=public --query-port=3706/tcp"));
+        assertTrue(calls.contains("--permanent --zone=public --query-port=3706/tcp"));
+    }
     @Test void invalidPortNeverGeneratesCommand() {
         assertThrows(IllegalArgumentException.class, () -> XrayFirewall.command(0));
         assertThrows(IllegalArgumentException.class, () -> XrayFirewall.command(65536));
+        assertThrows(IllegalArgumentException.class, () -> XrayFirewall.command(3706, "other"));
+    }
+    @Test void udpInboundOpensOnlyUdp() throws Exception {
+        tool("ufw", "if [ \"$1\" = status ]; then echo \"Status: active\"; else echo \"$*\" >> \"$CALLS\"; fi");
+        assertTrue(run("udp").contains("SPEEDNET_FIREWALL_OPENED"));
+        assertEquals("allow 3706/udp\n", Files.readString(directory.resolve("calls")));
     }
 }

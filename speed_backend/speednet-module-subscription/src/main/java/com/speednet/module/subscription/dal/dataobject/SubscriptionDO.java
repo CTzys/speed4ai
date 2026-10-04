@@ -6,7 +6,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 @Data @EqualsAndHashCode(callSuper=true) @TableName(value="subscription",autoResultMap=true)
 public class SubscriptionDO extends TenantBaseDO {
- private Long id;
+ private Long id; private Long planId; private Long baseTotalBytes; private Long extraUsedBytes;
  private String number; private Long userId; private String source; private String orderNo;
  private LocalDateTime startTime; private LocalDateTime expiryTime; private LocalDateTime endedTime;
  private Boolean paused; private Integer status; private Integer syncStatus; private String lastError;

@@ -21,8 +21,8 @@
 <!--        <module>speednet-module-bpm</module>-->
 <!--        <module>speednet-module-report</module>-->
 <!--        <module>speednet-module-mp</module>-->
-<!--        <module>speednet-module-pay</module>-->
-<!--        <module>speednet-module-mall</module>-->
+        <module>speednet-module-pay</module>
+        <module>speednet-module-mall</module>
 <!--        <module>speednet-module-iot</module>-->
 <!--        <module>speednet-module-im</module>-->
 <!-- 请参考 https://doc.speednet.local/ai/build/ 文档，完成 AI 模块的启动！！！ -->

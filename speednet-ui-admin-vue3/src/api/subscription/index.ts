@@ -29,6 +29,7 @@ export interface SubscriptionVO {
   nextResetTime?: string | number
   nodeLimit: number
   clientCount: number
+  nodeCount?: number
   regionId?: number
   cityId?: number
   remark?: string

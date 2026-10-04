@@ -48,7 +48,7 @@
         width="180"
       /><el-table-column label="错误" prop="lastError" show-overflow-tooltip /><el-table-column
         label="操作"
-        width="730"
+        width="620"
         fixed="right"
         ><template #default="s"
           ><el-link
@@ -65,12 +65,13 @@
             link
             type="primary"
             v-hasPermi="['xray:inbound:query']"
+            :disabled="s.row.installStatus !== 2"
             @click="router.push({ path: '/xray/inbound', query: { serverId: s.row.id } })"
             >入站</el-button
           ><el-button
             link
             type="success"
-            :disabled="!!operatingId || s.row.installStatus === 1"
+            :disabled="!!operatingId || s.row.installStatus !== 2"
             v-hasPermi="['xray:server:start']"
             @click="control(s.row, true)"
             >启动</el-button
@@ -78,28 +79,54 @@
           <el-button
             link
             type="danger"
-            :disabled="!!operatingId || s.row.installStatus === 1"
+            :disabled="!!operatingId || s.row.installStatus !== 2"
             v-hasPermi="['xray:server:stop']"
             @click="control(s.row, false)"
             >停止</el-button
           >
-          <el-button
-            link
-            type="primary"
+          <el-dropdown
+            trigger="click"
+            class="mx-3"
             :disabled="!!operatingId"
-            v-hasPermi="['xray:server:test']"
-            @click="testPanel(s.row.id)"
-            >测试面板</el-button
+            v-hasPermi="['xray:server:test', 'xray:server:check']"
+            @command="(command) => runCheck(command, s.row.id)"
           >
-          <el-button link type="primary" @click="test(s.row.id)" v-hasPermi="['xray:server:test']"
-            >测试 SSH</el-button
-          ><el-button
-            link
-            type="primary"
-            @click="check(s.row.id)"
-            v-hasPermi="['xray:server:check']"
-            >检测</el-button
-          ><el-button
+            <el-button link type="primary" :disabled="!!operatingId">
+              连接与状态检查<Icon icon="ep:arrow-down" class="ml-1" />
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="checkPermi(['xray:server:test'])" command="ssh">
+                  <div class="py-1">
+                    <div>检查 SSH 登录</div>
+                    <div class="text-xs text-gray-500"
+                      >验证 SSH 地址、端口及密码或私钥能否登录服务器</div
+                    >
+                  </div>
+                </el-dropdown-item>
+                <el-dropdown-item v-if="checkPermi(['xray:server:test'])" command="panel">
+                  <div class="py-1">
+                    <div>检查面板 API 连接</div>
+                    <div class="text-xs text-gray-500"
+                      >使用已保存的面板地址和 Token，验证能否读取入站列表</div
+                    >
+                  </div>
+                </el-dropdown-item>
+                <el-dropdown-item v-if="checkPermi(['xray:server:check'])" command="health">
+                  <div class="py-1">
+                    <div>检查 x-ui 服务状态</div>
+                    <div class="text-xs text-gray-500"
+                      >通过 SSH 查看 x-ui 是否运行，更新运行状态和检测时间</div
+                    >
+                    <div class="text-xs text-gray-500"
+                      >此项仅检查服务状态，不验证代理节点能否上网</div
+                    >
+                  </div>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button
             link
             type="success"
             @click="install(s.row.id)"
@@ -128,9 +155,11 @@
 </template>
 <script setup lang="ts">
 import { dateFormatter } from '@/utils/formatTime'
+import { checkPermi } from '@/utils/permission'
 import * as Api from '@/api/xray/server'
 import * as InstallApi from '@/api/xray/install'
 import ServerForm from './ServerForm.vue'
+import { useIntervalFn } from '@vueuse/core'
 defineOptions({ name: 'XrayServer' })
 const router = useRouter()
 const msg = useMessage(),
@@ -140,13 +169,17 @@ const msg = useMessage(),
   formRef = ref()
 const operatingId = ref<number>()
 const query = reactive({ pageNo: 1, pageSize: 10, name: '', host: '' })
-const load = async () => {
-  loading.value = true
+let fetching = false
+const load = async (showLoading = true) => {
+  if (fetching) return
+  fetching = true
+  if (showLoading) loading.value = true
   try {
     const r = await Api.getServerPage(query)
     list.value = r.list
     total.value = r.total
   } finally {
+    fetching = false
     loading.value = false
   }
 }
@@ -183,11 +216,12 @@ const panelUrl = (server: Api.XrayServerVO): string | undefined => {
 }
 const test = async (id: number) => {
   await Api.testSsh(id)
-  msg.success('SSH 连接正常')
+  msg.success('SSH 登录成功，服务器地址、端口及登录凭据可用')
 }
 const check = async (id: number) => {
-  await Api.checkHealth(id)
-  msg.success('检测完成')
+  const result = await Api.checkHealth(id)
+  if (result.healthStatus === 1) msg.success('x-ui 服务正在运行，已更新运行状态和检测时间')
+  else msg.warning(result.lastError || 'x-ui 服务状态异常，请查看列表中的错误信息')
   await load()
 }
 const control = async (server: Api.XrayServerVO, start: boolean) => {
@@ -206,10 +240,16 @@ const control = async (server: Api.XrayServerVO, start: boolean) => {
   }
 }
 const testPanel = async (id: number) => {
+  await Api.testPanel(id)
+  msg.success('面板 API 连接正常，Token 验证通过，入站列表可读取')
+}
+const runCheck = async (command: string, id: number) => {
+  if (operatingId.value) return
   operatingId.value = id
   try {
-    await Api.testPanel(id)
-    msg.success('面板 API 连接正常，Token 验证通过')
+    if (command === 'ssh') await test(id)
+    else if (command === 'panel') await testPanel(id)
+    else if (command === 'health') await check(id)
   } finally {
     operatingId.value = undefined
   }
@@ -226,5 +266,16 @@ const remove = async (id: number) => {
   msg.success('删除成功')
   await load()
 }
-onMounted(load)
+// Keep asynchronous installation results current without flashing the table loading overlay.
+const { pause, resume } = useIntervalFn(() => load(false), 3000, { immediate: false })
+onMounted(() => {
+  load()
+  resume()
+})
+onActivated(() => {
+  load()
+  resume()
+})
+onDeactivated(pause)
+onUnmounted(pause)
 </script>

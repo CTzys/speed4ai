@@ -13,6 +13,7 @@ import com.speednet.module.xray.framework.ssh.SshExecutor;
 import com.speednet.module.xray.framework.panel.XrayPanelSettings;
 import jakarta.annotation.Resource;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +21,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static com.speednet.framework.common.exception.util.ServiceExceptionUtil.exception;
 import static com.speednet.module.xray.enums.ErrorCodeConstants.*;
@@ -32,6 +34,10 @@ public class XrayInstallServiceImpl implements XrayInstallService {
     @Resource private XrayInstallLogMapper logMapper;
     @Resource private SshExecutor sshExecutor;
     @Resource @Lazy private XrayInstallService self;
+    @Value("${xray.install.panel-port-min:1024}")
+    private int panelPortMin = 1024;
+    @Value("${xray.install.panel-port-max:9999}")
+    private int panelPortMax = 9999;
 
     @Override public Long createTask(XrayInstallCreateReqVO reqVO) {
         if (serverMapper.selectById(reqVO.getServerId()) == null) throw exception(SERVER_NOT_EXISTS);
@@ -57,13 +63,18 @@ public class XrayInstallServiceImpl implements XrayInstallService {
             runStep(taskId, server, "检测系统", "command -v systemctl >/dev/null && uname -sm && command -v curl >/dev/null");
             runStep(taskId, server, "检测现有安装", "if command -v x-ui >/dev/null; then x-ui status || true; else echo NOT_INSTALLED; fi");
             Privilege privilege = detectPrivilege(taskId, server);
+            if (panelPortMin < 1024 || panelPortMax > 65535 || panelPortMin > panelPortMax) {
+                throw new IllegalStateException("面板随机端口范围无效，应满足 1024 <= 最小端口 <= 最大端口 <= 65535");
+            }
+            int panelPort = ThreadLocalRandom.current().nextInt(panelPortMin, panelPortMax + 1);
             String versionArg = task.getVersion() == null || task.getVersion().isBlank() ? "" : " " + task.getVersion();
             // Version is strictly validated above. The official installer verifies release SHA256 files.
             runStep(taskId, server, "安装 3x-ui",
                     "set -e; install_file=$(mktemp /tmp/speednet-3x-ui-install.XXXXXX); "
                             + "trap 'rm -f \"$install_file\"' EXIT; "
                             + "curl -fsSL https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh -o \"$install_file\"; "
-                            + privilege.prefix() + "env XUI_NONINTERACTIVE=1 bash \"$install_file\"" + versionArg,
+                            + privilege.prefix() + "env XUI_NONINTERACTIVE=1 XUI_PANEL_PORT=" + panelPort
+                            + " bash \"$install_file\"" + versionArg,
                     privilege.stdin());
             runStep(taskId, server, "验证服务", privilege.prefix()
                     + "sh -c 'systemctl is-active --quiet x-ui && x-ui status'", privilege.stdin());

@@ -1,7 +1,9 @@
 package com.speednet.module.product.controller.admin.spu.vo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Min;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
@@ -11,29 +13,32 @@ import java.util.List;
 @Data
 public class ProductSkuSaveReqVO {
 
-    @Schema(description = "商品 SKU 名字", requiredMode = Schema.RequiredMode.REQUIRED, example = "清凉小短袖")
-    @NotEmpty(message = "商品 SKU 名字不能为空")
+    @Schema(description = "商品 SKU 名字", example = "清凉小短袖")
     private String name;
 
     @Schema(description = "销售价格，单位：分", requiredMode = Schema.RequiredMode.REQUIRED, example = "1999")
     @NotNull(message = "销售价格，单位：分不能为空")
+    @Min(0)
     private Integer price;
 
     @Schema(description = "市场价", example = "2999")
-    private Integer marketPrice;
+    @JsonSetter(nulls=Nulls.SKIP)
+    private Integer marketPrice = 0;
 
     @Schema(description = "成本价", example = "19")
-    private Integer costPrice;
+    @JsonSetter(nulls=Nulls.SKIP)
+    private Integer costPrice = 0;
 
     @Schema(description = "条形码", example = "15156165456")
     private String barCode;
 
-    @Schema(description = "图片地址", requiredMode = Schema.RequiredMode.REQUIRED, example = "https://www.speednet.local/xx.png")
-    @NotNull(message = "图片地址不能为空")
-    private String picUrl;
+    @Schema(description = "图片地址", example = "https://www.speednet.local/xx.png")
+    @JsonSetter(nulls=Nulls.SKIP)
+    private String picUrl = "";
 
     @Schema(description = "库存", requiredMode = Schema.RequiredMode.REQUIRED, example = "200")
     @NotNull(message = "库存不能为空")
+    @Min(0)
     private Integer stock;
 
     @Schema(description = "商品重量,单位：kg 千克", example = "1.2")

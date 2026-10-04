@@ -41,7 +41,7 @@
       <el-button @click="load">刷新</el-button>
       <el-button
         v-hasPermi="['subscription:extend']"
-        :disabled="!selected.length"
+        :disabled="!selected.length || selected.some((row) => [4, 5].includes(row.status))"
         @click="actionRef.open('extend', selected)"
         >批量延长</el-button
       >
@@ -102,7 +102,7 @@
       >
       <el-table-column label="节点" width="70"
         ><template #default="s"
-          >{{ s.row.clientCount }} / {{ s.row.nodeLimit }}</template
+          >{{ s.row.nodeCount ?? s.row.clientCount }} / {{ s.row.nodeLimit }}</template
         ></el-table-column
       >
       <el-table-column label="配置" width="90"
@@ -114,11 +114,20 @@
         ></el-table-column
       >
       <el-table-column prop="lastError" label="错误" min-width="150" show-overflow-tooltip />
-      <el-table-column label="操作" width="310" fixed="right"
+      <el-table-column label="操作" width="390" fixed="right"
         ><template #default="s">
           <el-button link type="primary" @click="detailRef.open(s.row.id)">详情</el-button>
           <el-button
             v-if="s.row.status !== 5"
+            v-hasPermi="['subscription:assign']"
+            link
+            type="primary"
+            :disabled="!s.row.clientCount"
+            @click="detailRef.openAddInbound(s.row.id)"
+            >添加入站</el-button
+          >
+          <el-button
+            v-if="![4, 5].includes(s.row.status)"
             v-hasPermi="['subscription:extend']"
             link
             type="primary"

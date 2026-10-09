@@ -12,5 +12,8 @@ public interface XrayServerService {
     XrayServerDO get(Long id);
     PageResult<XrayServerDO> getPage(XrayServerPageReqVO reqVO);
     void testSsh(Long id);
+    void testPanel(Long id);
+    XrayServerDO start(Long id);
+    XrayServerDO stop(Long id);
     XrayServerDO checkHealth(Long id);
 }

@@ -10,6 +10,7 @@ import java.util.List;
 public interface XrayInstallService {
     Long createTask(XrayInstallCreateReqVO reqVO);
     void executeTask(Long taskId);
+    void syncPanelConfig(Long serverId);
     PageResult<XrayInstallTaskDO> getPage(PageParam pageParam);
     List<XrayInstallLogDO> getLogs(Long taskId);
 }

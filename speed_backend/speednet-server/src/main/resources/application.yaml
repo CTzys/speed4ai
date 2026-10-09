@@ -366,4 +366,10 @@ speednet:
     message-bus:
       type: redis # 消息总线的类型
 
+xray:
+  install:
+    # 新安装的面板随机端口范围（包含上下限）；升级已有面板时由安装脚本保留原端口。
+    panel-port-min: 1024
+    panel-port-max: 9999
+
 debug: false

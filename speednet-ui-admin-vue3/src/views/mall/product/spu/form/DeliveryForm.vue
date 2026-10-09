@@ -54,7 +54,6 @@ const formData = reactive<Spu>({
   deliveryTemplateId: undefined // 运费模版
 })
 const rules = reactive({
-  deliveryTypes: [required],
   deliveryTemplateId: [required]
 })
 

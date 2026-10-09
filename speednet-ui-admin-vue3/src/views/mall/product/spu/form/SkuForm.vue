@@ -81,22 +81,22 @@ const ruleConfig: RuleConfig[] = [
   {
     name: 'stock',
     rule: (arg) => arg >= 0,
-    message: '商品库存必须大于等于 1 ！！！'
+    message: '商品库存不能为负数'
   },
   {
     name: 'price',
-    rule: (arg) => arg >= 0.01,
-    message: '商品销售价格必须大于等于 0.01 元！！！'
+    rule: (arg) => arg >= 0,
+    message: '商品售价不能为负数；0 元表示免费'
   },
   {
     name: 'marketPrice',
-    rule: (arg) => arg >= 0.01,
-    message: '商品市场价格必须大于等于 0.01 元！！！'
+    rule: (arg) => arg == null || arg >= 0,
+    message: '选填市场价不能为负数'
   },
   {
     name: 'costPrice',
-    rule: (arg) => arg >= 0.01,
-    message: '商品成本价格必须大于等于 0.00 元！！！'
+    rule: (arg) => arg == null || arg >= 0,
+    message: '选填成本价不能为负数'
   }
 ]
 

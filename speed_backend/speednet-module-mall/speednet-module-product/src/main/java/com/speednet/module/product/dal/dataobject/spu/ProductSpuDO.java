@@ -60,12 +60,14 @@ public class ProductSpuDO extends BaseDO {
      *
      * 关联 {@link ProductCategoryDO#getId()}
      */
+    @com.baomidou.mybatisplus.annotation.TableField(updateStrategy=com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
     private Long categoryId;
     /**
      * 商品品牌编号
      *
      * 关联 {@link ProductBrandDO#getId()}
      */
+    @com.baomidou.mybatisplus.annotation.TableField(updateStrategy=com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
     private Long brandId;
     /**
      * 商品封面图
@@ -136,6 +138,7 @@ public class ProductSpuDO extends BaseDO {
      *
      * 对应 TradeDeliveryExpressTemplateDO 的 id 编号
      */
+    @com.baomidou.mybatisplus.annotation.TableField(updateStrategy=com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
     private Long deliveryTemplateId;
 
     // ========== 营销相关字段 =========

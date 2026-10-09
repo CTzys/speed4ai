@@ -45,6 +45,11 @@ export const usePermissionStore = defineStore('permission', {
           res = roleRouters as AppCustomRouteRecordRaw[]
         }
         const routerMap: AppRouteRecordRaw[] = generateRoute(res)
+        for (const route of routerMap) {
+          if (['/report', '/bpm', '/cms', '/mall'].includes(route.path)) {
+            route.meta = { ...route.meta, hidden: true }
+          }
+        }
         // 动态路由，404一定要放到最后面
         // preschooler：vue-router@4以后已支持静态404路由，此处可不再追加
         this.addRouters = routerMap.concat([

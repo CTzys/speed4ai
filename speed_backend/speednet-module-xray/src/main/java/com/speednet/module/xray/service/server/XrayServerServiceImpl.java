@@ -23,6 +23,7 @@ import static com.speednet.module.xray.enums.ErrorCodeConstants.SSH_CONNECT_FAIL
 public class XrayServerServiceImpl implements XrayServerService {
     @Resource private XrayServerMapper serverMapper;
     @Resource private SshExecutor sshExecutor;
+    @Resource private com.speednet.module.xray.framework.panel.XrayPanelClient panelClient;
 
     @Override public Long create(XrayServerSaveReqVO reqVO) {
         XrayServerDO server = BeanUtils.toBean(reqVO, XrayServerDO.class);
@@ -39,6 +40,8 @@ public class XrayServerServiceImpl implements XrayServerService {
         if (update.getSshPrivateKey() == null || update.getSshPrivateKey().isBlank()) update.setSshPrivateKey(old.getSshPrivateKey());
         if (update.getSshKeyPassphrase() == null || update.getSshKeyPassphrase().isBlank()) update.setSshKeyPassphrase(old.getSshKeyPassphrase());
         if (update.getPanelToken() == null || update.getPanelToken().isBlank()) update.setPanelToken(old.getPanelToken());
+        if (update.getPanelUsername() == null || update.getPanelUsername().isBlank()) update.setPanelUsername(old.getPanelUsername());
+        if (update.getPanelPassword() == null || update.getPanelPassword().isBlank()) update.setPanelPassword(old.getPanelPassword());
         serverMapper.updateById(update);
     }
 
@@ -49,6 +52,46 @@ public class XrayServerServiceImpl implements XrayServerService {
     @Override public void testSsh(Long id) {
         try { sshExecutor.test(validateExists(id)); }
         catch (Exception e) { throw exception(SSH_CONNECT_FAILED, safeMessage(e)); }
+    }
+
+    @Override public void testPanel(Long id) {
+        panelClient.call(validateExists(id), "list", null);
+    }
+    @Override public XrayServerDO start(Long id) { return controlService(id, true); }
+    @Override public XrayServerDO stop(Long id) { return controlService(id, false); }
+
+    private XrayServerDO controlService(Long id, boolean start) {
+        XrayServerDO server = validateExists(id);
+        if (Integer.valueOf(1).equals(server.getInstallStatus())) {
+            throw com.speednet.framework.common.exception.util.ServiceExceptionUtil.exception(
+                    com.speednet.module.xray.enums.ErrorCodeConstants.SERVICE_OPERATION_FAILED, "正在安装，请等待安装完成");
+        }
+        String prefix = "";
+        String stdin = null;
+        try {
+            var identity = sshExecutor.execute(server, "id -u", Duration.ofSeconds(10));
+            if (identity.exitCode() != 0 || !"0".equals(identity.output().trim())) {
+                var sudo = sshExecutor.execute(server, "sudo -n id -u", Duration.ofSeconds(10));
+                if (sudo.exitCode() == 0 && "0".equals(sudo.output().trim())) prefix = "sudo -n ";
+                else if (server.getSshPassword() != null && !server.getSshPassword().isBlank()) {
+                    prefix = "sudo -S -p '' "; stdin = server.getSshPassword() + "\n";
+                } else throw new IllegalStateException();
+            }
+            String action = start ? "start" : "stop";
+            var result = sshExecutor.execute(server, prefix + "sh -c 'systemctl " + action
+                    + " x-ui && systemctl show x-ui --property=ActiveState --value'", Duration.ofSeconds(45), stdin);
+            if (result.exitCode() != 0 || !(start ? "active" : "inactive").equals(result.output().trim())) {
+                throw new IllegalStateException();
+            }
+            serverMapper.updateById(new XrayServerDO().setId(id).setHealthStatus(start ? 1 : 2)
+                    .setLastCheckTime(LocalDateTime.now()).setLastError(start ? "" : "x-ui 服务已停止"));
+            return validateExists(id);
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw com.speednet.framework.common.exception.util.ServiceExceptionUtil.exception(
+                    com.speednet.module.xray.enums.ErrorCodeConstants.SERVICE_OPERATION_FAILED,
+                    "请检查 SSH 连接、root/sudo 权限及 x-ui 服务状态；操作后请重新检测");
+        }
     }
 
     @Override public XrayServerDO checkHealth(Long id) {

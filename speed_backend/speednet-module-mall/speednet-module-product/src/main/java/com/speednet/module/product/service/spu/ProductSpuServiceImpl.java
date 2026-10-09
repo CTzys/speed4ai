@@ -58,7 +58,7 @@ public class ProductSpuServiceImpl implements ProductSpuService {
     public Long createSpu(ProductSpuSaveReqVO createReqVO) {
         // 校验分类、品牌
         validateCategory(createReqVO.getCategoryId());
-        brandService.validateProductBrand(createReqVO.getBrandId());
+        if(createReqVO.getBrandId()!=null)brandService.validateProductBrand(createReqVO.getBrandId());
         // 校验 SKU
         List<ProductSkuSaveReqVO> skuSaveReqList = createReqVO.getSkus();
         productSkuService.validateSkuList(skuSaveReqList, createReqVO.getSpecType());
@@ -81,7 +81,7 @@ public class ProductSpuServiceImpl implements ProductSpuService {
         ProductSpuDO spu = validateSpuExists(updateReqVO.getId());
         // 校验分类、品牌
         validateCategory(updateReqVO.getCategoryId());
-        brandService.validateProductBrand(updateReqVO.getBrandId());
+        if(updateReqVO.getBrandId()!=null)brandService.validateProductBrand(updateReqVO.getBrandId());
         // 校验SKU
         List<ProductSkuSaveReqVO> skuSaveReqList = updateReqVO.getSkus();
         productSkuService.validateSkuList(skuSaveReqList, updateReqVO.getSpecType());
@@ -124,6 +124,7 @@ public class ProductSpuServiceImpl implements ProductSpuService {
      * @param id 商品分类编号
      */
     private void validateCategory(Long id) {
+        if(id==null)return;
         categoryService.validateCategory(id);
         // 校验层级
         if (categoryService.getCategoryLevel(id) < CATEGORY_LEVEL) {

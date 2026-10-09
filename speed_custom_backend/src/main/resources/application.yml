@@ -5,6 +5,10 @@ spring:
     name: speed-custom-backend
   profiles:
     active: ${CUSTOM_PROFILE:test}
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   datasource:
     url: ${CUSTOM_DB_URL:jdbc:mysql://127.0.0.1:3306/speednet?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
     username: ${CUSTOM_DB_USER:root}
@@ -30,3 +34,5 @@ custom:
   mail-from: ${CUSTOM_MAIL_FROM:no-reply@example.com}
   dev-return-code: ${CUSTOM_DEV_RETURN_CODE:false}
   cors-origin: ${CUSTOM_CORS_ORIGIN:http://localhost:5173}
+
+  backend-url: ${CUSTOM_BACKEND_URL:http://127.0.0.1:48080}

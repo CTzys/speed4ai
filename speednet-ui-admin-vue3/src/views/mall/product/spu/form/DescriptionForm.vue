@@ -31,9 +31,7 @@ const formData = ref<Spu>({
   description: '' // 商品详情
 })
 // 表单规则
-const rules = reactive({
-  description: [required]
-})
+const rules = reactive({})
 
 /** 富文本编辑器如果输入过再清空会有残留，需再重置一次 */
 watch(

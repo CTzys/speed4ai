@@ -56,6 +56,27 @@ public class PackageService {
   var s=subscriptions.require(num(rows.getFirst(),"current_subscription_id"));var result=new LinkedHashMap<String,Object>();
   result.put("id",s.getId());result.put("number",s.getNumber());result.put("planId",s.getPlanId());result.put("planLevel",s.getPlanId()==null?null:plan(s.getPlanId()).get("level"));result.put("planName",s.getPlanId()==null?"后台开通订阅":plan(s.getPlanId()).get("name"));result.put("expiryTime",s.getExpiryTime());result.put("status",SubscriptionPolicy.status(s,LocalDateTime.now()));result.put("syncStatus",s.getSyncStatus());result.put("lastError",s.getLastError());result.put("usedBytes",SubscriptionPolicy.used(s));result.put("totalBytes",s.getTotalBytes());result.put("baseBytes",s.getBaseTotalBytes()==null?s.getTotalBytes():s.getBaseTotalBytes());result.put("extraBytes",s.getExpiryTime().isAfter(LocalDateTime.now())?subscriptions.packRemaining(s):0);result.put("nextResetTime",s.getNextResetTime());result.put("nodeLimit",s.getNodeLimit());return result;
  });}
+ public record SubscriptionInfo(LocalDateTime expiryTime,String planName,Long totalBytes,Long remainingBytes,
+  long usedBytes,long extraBytes,Integer nodeLimit,LocalDateTime nextResetTime,int status,Integer syncStatus,
+  boolean unlimited,Double usagePercent,long remainingDays,long pendingOrderCount) {}
+ public SubscriptionInfo subscriptionInfo(long user){return tx.execute(status->{
+  var account=accounts.lock(user);
+  if(account.get("current_subscription_id")==null)return null;
+  var s=subscriptions.require(num(account,"current_subscription_id"));
+  var now=LocalDateTime.now();
+  String name=s.getPlanId()==null?"后台开通订阅":String.valueOf(plan(s.getPlanId()).get("name"));
+  boolean unlimited=Boolean.TRUE.equals(s.getUnlimited());
+  long used=SubscriptionPolicy.used(s);
+  Long total=unlimited?null:(s.getBaseTotalBytes()==null?s.getTotalBytes():s.getBaseTotalBytes());
+  // Total entitlement already includes traffic packs; do not add the pack balance twice.
+  Long remaining=unlimited?null:Math.max(0,s.getTotalBytes()-used);
+  long extra=s.getExpiryTime().isAfter(now)?subscriptions.packRemaining(s):0;
+  Double percent=unlimited?null:Math.min(100,Math.max(0,used*100.0/Math.max(1,s.getTotalBytes())));
+  long days=s.getExpiryTime().isAfter(now)?(long)Math.ceil(Duration.between(now,s.getExpiryTime()).toMillis()/86400000.0):0;
+  long pending=jdbc.queryForObject("SELECT COUNT(*) FROM subscription_purchase WHERE tenant_id=? AND user_id=? AND status IN ('pending','paid','failed')",Long.class,tenant(),user);
+  return new SubscriptionInfo(s.getExpiryTime(),name,total,remaining,used,extra,s.getNodeLimit(),s.getNextResetTime(),
+   SubscriptionPolicy.status(s,now),s.getSyncStatus(),unlimited,percent,days,pending);
+ });}
  private long credit(long subscription,LocalDateTime now){long total=0;for(var o:jdbc.queryForList("SELECT * FROM subscription_purchase WHERE tenant_id=? AND subscription_id=? AND status='completed' AND kind IN ('new','renew','upgrade') AND credited=0 AND service_end>?",tenant(),subscription,now)){
   var start=time(o,"service_start");var end=time(o,"service_end");long all=Duration.between(start,end).getSeconds(),left=Duration.between(now.isAfter(start)?now:start,end).getSeconds();if(all>0&&left>0)total+=Math.multiplyExact(num(o,"original_amount"),left)/all;
  }return total;}

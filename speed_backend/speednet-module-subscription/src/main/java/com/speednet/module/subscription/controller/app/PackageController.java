@@ -24,6 +24,7 @@ public class PackageController {
  public record Checkout(long priceId,String requestKey){} public record OrderAction(long orderId,String channelCode){}
  @PermitAll @GetMapping("/plans") public CommonResult<?> plans(HttpServletRequest r){return CommonResult.success(service.plansForUser(user(r)));}
  @PermitAll @GetMapping("/current") public CommonResult<?> current(HttpServletRequest r){return CommonResult.success(service.current(user(r)));}
+ @PermitAll @GetMapping("/info") public CommonResult<?> info(HttpServletRequest r){return CommonResult.success(service.subscriptionInfo(user(r)));}
  @PermitAll @GetMapping("/orders") public CommonResult<?> orders(HttpServletRequest r){return CommonResult.success(service.orders(user(r),false));}
  @PermitAll @GetMapping("/regions") public CommonResult<?> regions(HttpServletRequest r){
   user(r);long tenant=TenantContextHolder.getRequiredTenantId();
@@ -38,4 +39,16 @@ public class PackageController {
  @PermitAll @PostMapping("/cancel") public CommonResult<?> cancel(@RequestBody OrderAction body,HttpServletRequest r){service.cancel(body.orderId(),user(r));return CommonResult.success(true);}
  @PermitAll @PostMapping("/pay") public CommonResult<?> pay(@RequestBody OrderAction body,HttpServletRequest r){return CommonResult.success(service.pay(body.orderId(),user(r),body.channelCode(),com.speednet.framework.common.util.servlet.ServletUtils.getClientIP(r)));}
  @com.speednet.framework.apilog.core.annotation.ApiAccessLog(enable=false) @PermitAll @GetMapping("/link") public CommonResult<?> link(HttpServletRequest r){var s=service.current(user(r));if(s==null||!Integer.valueOf(1).equals(s.get("status"))||!Integer.valueOf(2).equals(s.get("syncStatus")))throw exception(new ErrorCode(1_013_000_003,"订阅未生效或节点尚未配置完成"));return CommonResult.success(subscriptions.link(((Number)s.get("id")).longValue()));}
+ private long currentSubscription(HttpServletRequest r){var s=service.current(user(r));if(s==null)throw exception(new ErrorCode(1_013_000_003,"尚未开通订阅"));return ((Number)s.get("id")).longValue();}
+ @com.speednet.framework.apilog.core.annotation.ApiAccessLog(enable=false) @PermitAll @GetMapping("/nodes")
+ public CommonResult<?> nodes(HttpServletRequest r){return CommonResult.success(subscriptions.nodes(currentSubscription(r)));}
+ @com.speednet.framework.apilog.core.annotation.ApiAccessLog(enable=false) @PermitAll @GetMapping("/clash-link")
+ public CommonResult<?> clashLink(HttpServletRequest r){long id=currentSubscription(r);subscriptions.clash(id);return CommonResult.success(Map.of("path",subscriptions.link(id).get("path")+"?format=clash"));}
+ @com.speednet.framework.apilog.core.annotation.ApiAccessLog(enable=false) @PermitAll @GetMapping("/clash")
+ public org.springframework.http.ResponseEntity<String> clash(HttpServletRequest r){var result=subscriptions.clash(currentSubscription(r));return org.springframework.http.ResponseEntity.ok()
+  .contentType(org.springframework.http.MediaType.parseMediaType("application/yaml"))
+  .header("Cache-Control","no-store").header("Content-Disposition","attachment; filename=subscription.yaml")
+  .header("subscription-userinfo","upload="+result.upload()+"; download="+result.download()+"; total="+result.total()+"; expire="+result.expiry())
+  .header("profile-update-interval","1").body(result.content());}
+
 }

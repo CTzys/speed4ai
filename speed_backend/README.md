@@ -10,7 +10,7 @@ SpeedNet 后端服务，基于 JDK 25、Spring Boot 4 和 Maven 多模块架构�
 - `speednet-module-infra`：基础设施能力
 - `speednet-server`：应用启动模块
 
-会员、Xray、订阅、支付及商城模块已默认启用。商城包括商品、营销、交易和统计四个模块。工作流、报表、IoT、IM 和 AI 等可选模块仍默认关闭，可按需在根 `pom.xml` 和 `speednet-server/pom.xml` 中启用。
+会员、Xray、订阅、工单、支付及商城模块已默认启用。商城包括商品、营销、交易和统计四个模块。工作流、报表、IoT、IM 和 AI 等可选模块仍默认关闭，可按需在根 `pom.xml` 和 `speednet-server/pom.xml` 中启用。
 
 ## 技术栈
 
@@ -99,3 +99,11 @@ V3__add_order_index.sql
 「订阅管理 → 套餐商品 / 套餐订单」配置订阅专用售价、流量和节点。客户前台可新购、续订、升级折抵、补充流量和查询订单，始终只持有一份当前订阅。启用配置、数据库迁移、支付应用及升级计价规则见 [商品系统说明](docs/product-system-design.md)。需要同时部署主后台、客户后台及两套前台。
 
 未提交的原 V9～V19 已合并为 `V9__subscription_commerce_and_menu_cleanup.sql`。已执行原 V9～V19 的数据库使用 `consolidate-v9` 备份和同步历史，不能重新执行合并 SQL；部分执行的环境须先使用原脚本补齐至 V19。
+
+## 客户工单
+
+新增“工单管理”后台及客户中心“工单系统”，支持提交与回复、截图、领取转交、内部备注、订单/订阅关联、未读及操作记录。部署时运行 Flyway V10 并给客服分配工单权限；接入与验证见 [客户工单说明](docs/support-tickets.md)。
+
+Clash 订阅支持数据库通用规则与客户专用规则，配置与部署见 [Clash 路由规则](docs/clash-rules.md)。
+
+客户工单与 Clash 规则新增迁移已合并为 V10；已执行原 V10/V11 的环境使用 `consolidate-v10` 备份并同步历史，详见 [Flyway 维护](script/flyway/README.md)。

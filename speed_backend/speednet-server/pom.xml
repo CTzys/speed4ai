@@ -62,6 +62,10 @@
             <groupId>com.speednet</groupId><artifactId>speednet-module-subscription</artifactId><version>${revision}</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.speednet</groupId><artifactId>speednet-module-support</artifactId><version>${revision}</version>
+        </dependency>
+
         <!-- 数据报表。默认注释，保证编译速度 -->
 <!--        <dependency>-->
 <!--            <groupId>com.speednet</groupId>-->

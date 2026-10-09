@@ -7,7 +7,7 @@
         <el-form-item label="密码" prop="password"><el-input v-model="form.password" size="large" type="password" show-password placeholder="请输入密码" autocomplete="current-password" /></el-form-item>
         <el-button class="full-button" type="primary" size="large" :loading="loading" native-type="submit">登录账户 <span aria-hidden="true">→</span></el-button>
       </el-form><p class="auth-hint">忘记密码？请联系管理员重置。自助找回将在后续版本提供。</p>
-    </div><div class="auth-bottom">© 2026 SpeedNet · 客户中心</div></div>
+    </div><div class="auth-bottom"><router-link to="/">← 返回网站首页</router-link><br><br>© 2026 SpeedNet · 客户中心</div></div>
   </main>
 </template>
 <script setup lang="ts">

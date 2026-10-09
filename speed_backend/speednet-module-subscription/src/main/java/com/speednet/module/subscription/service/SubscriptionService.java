@@ -377,14 +377,27 @@ public class SubscriptionService {
     }
     public Map<String,String> link(Long id){var s=require(id);return Map.of("path","/app-api/subscription/feed/"+s.getTenantId()+"/"+s.getToken());}
     public record Feed(String content,long upload,long download,long total,long expiry) {}
-    public Feed feed(String token) {
+    @jakarta.annotation.Resource private ClashRuleService clashRules;
+    public Feed feed(String token) { return feed(token,"base64"); }
+    public Feed feed(String token,String format) {
+        if(!Set.of("base64","clash").contains(format))throw invalid("订阅格式不支持");
         if(token==null||!token.matches("[A-Za-z0-9_-]{43}"))throw invalid("订阅链接无效");
         var s=subscriptions.selectOne(new LambdaQueryWrapper<SubscriptionDO>().eq(SubscriptionDO::getTokenHash,SubscriptionPolicy.hash(token)));
         if(s==null||effectiveStatus(s)!=SubscriptionPolicy.ACTIVE)throw invalid("订阅不存在、未生效或已停用");
         if(s.getSyncStatus()!=2)throw invalid("订阅配置尚未成功，请联系管理员");
         var list=clientList(s.getId()).stream().filter(c->!c.getReleased()&&c.getSyncStatus()==2&&c.getConnectionUri()!=null&&!c.getConnectionUri().isBlank()).map(SubscriptionClientDO::getConnectionUri).toList();
         if(list.isEmpty())throw invalid("订阅暂无可用节点");
-        return new Feed(Base64.getEncoder().encodeToString(String.join("\n",list).getBytes(java.nio.charset.StandardCharsets.UTF_8)),"download".equals(s.getTrafficMode())?0:s.getUsedUpload(),s.getUsedDownload(),s.getUnlimited()?0:s.getTotalBytes(),s.getExpiryTime().atZone(java.time.ZoneId.systemDefault()).toEpochSecond());
+        return new Feed("clash".equals(format)?ClashSubscription.render(list,clashRules.effective(s.getUserId())):Base64.getEncoder().encodeToString(String.join("\n",list).getBytes(java.nio.charset.StandardCharsets.UTF_8)),"download".equals(s.getTrafficMode())?0:s.getUsedUpload(),s.getUsedDownload(),s.getUnlimited()?0:s.getTotalBytes(),s.getExpiryTime().atZone(java.time.ZoneId.systemDefault()).toEpochSecond());
+    }
+    public Feed clash(Long id) { return feed(require(id).getToken(),"clash"); }
+    public List<Map<String,Object>> nodes(Long id) {
+        // The same entitlement and synchronization checks apply to node metadata and configuration downloads.
+        clash(id);
+        return clientList(id).stream().filter(c->!c.getReleased()&&c.getSyncStatus()==2&&c.getConnectionUri()!=null&&!c.getConnectionUri().isBlank()).map(c->{
+            var proxy=ClashSubscription.proxy(c.getConnectionUri());
+            Map<String,Object> row=new LinkedHashMap<>();row.put("id",c.getNodeId());row.put("name",c.getConnectionName());
+            row.put("protocol",c.getProtocol());row.put("server",proxy.get("server"));row.put("port",proxy.get("port"));return row;
+        }).toList();
     }
     private void order(Long id,String no,String purpose){orders.insert(new SubscriptionOrderDO().setSubscriptionId(id).setOrderNo(no).setPurpose(purpose));}
     private void log(Long id,String action,String message,long up,long down,boolean ok){logs.insert(new SubscriptionLogDO().setSubscriptionId(id).setAction(action).setMessage(message).setUploadBytes(up).setDownloadBytes(down).setSuccess(ok?1:0));}

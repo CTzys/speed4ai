@@ -1,6 +1,8 @@
 <template>
   <ContentWrap
-    ><el-button type="primary" @click="load"><Icon icon="ep:refresh" />刷新</el-button></ContentWrap
+    ><el-button type="primary" @click="load()"
+      ><Icon icon="ep:refresh" />刷新</el-button
+    ></ContentWrap
   ><ContentWrap
     ><el-table v-loading="loading" :data="list"
       ><el-table-column label="任务编号" prop="id" width="100" /><el-table-column

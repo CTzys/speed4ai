@@ -17,6 +17,11 @@
           <component :is="item.icon" class="nav-icon" /><span>{{
             item.label
           }}</span
+          ><el-tag
+            v-if="item.key === 'tickets' && ticketUnread"
+            type="danger"
+            size="small"
+            >{{ ticketUnread }}</el-tag
           ><span v-if="item.key !== 'home'" class="nav-chevron">›</span>
         </button>
       </nav>
@@ -70,11 +75,24 @@
         </div>
       </header>
       <main class="page-content">
+        <HomeOverview
+          v-if="current === 'home'"
+          :member="member"
+          :preview="route.query.preview === '1' && isDev"
+          @navigate="select"
+          @support="openSupport"
+        />
         <PackageCenter
-          v-if="['home', 'plans', 'orders', 'usage', 'nodes'].includes(current)"
+          v-if="['plans', 'orders', 'usage', 'nodes'].includes(current)"
           :tab="current"
           :preview="route.query.preview === '1' && isDev"
           @navigate="select"
+          @support="openSupport"
+        />
+        <TicketCenter
+          v-if="current === 'tickets'"
+          :context="ticketContext"
+          @read="refreshTicketUnread"
         />
         <template v-if="current === 'profile'"
           ><div class="page-heading">
@@ -97,7 +115,9 @@
         >
         <template
           v-else-if="
-            !['home', 'plans', 'orders', 'usage', 'nodes'].includes(current)
+            !['home', 'plans', 'orders', 'usage', 'nodes', 'tickets'].includes(
+              current,
+            )
           "
           ><div class="page-heading">
             <div>
@@ -122,7 +142,8 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import TicketCenter from "../components/TicketCenter.vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -141,8 +162,34 @@ import {
   Monitor,
   DataLine,
 } from "@element-plus/icons-vue";
-import { api, clearSession, type Member } from "../api";
+import { tickets, api, clearSession, type Member } from "../api";
+import HomeOverview from "../components/HomeOverview.vue";
 import PackageCenter from "../components/PackageCenter.vue";
+const ticketUnread = ref(0);
+let unreadTimer: ReturnType<typeof setInterval> | undefined;
+async function refreshTicketUnread() {
+  try {
+    ticketUnread.value = await tickets.unread();
+  } catch {
+    /* Navigation remains usable while service is unavailable. */
+  }
+}
+onMounted(() => {
+  if (!(import.meta.env.DEV && route.query.preview === "1")) {
+    void refreshTicketUnread();
+    unreadTimer = setInterval(() => {
+      if (!document.hidden) void refreshTicketUnread();
+    }, 30000);
+  }
+});
+onUnmounted(() => {
+  if (unreadTimer) clearInterval(unreadTimer);
+});
+const ticketContext = ref<{ orderId?: number; subscriptionId?: number }>();
+function openSupport(context: { orderId?: number; subscriptionId?: number }) {
+  ticketContext.value = context;
+  select("tickets");
+}
 const isDev = import.meta.env.DEV;
 
 const router = useRouter();
@@ -151,7 +198,9 @@ const member = ref<Member | null>(null);
 const mobileMenu = ref(false);
 const current = computed(() => {
   const tab = route.query.tab;
-  return typeof tab === "string" && menu.some(item => item.key === tab) ? tab : "home";
+  return typeof tab === "string" && menu.some((item) => item.key === tab)
+    ? tab
+    : "home";
 });
 const today = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric",
@@ -173,6 +222,7 @@ const currentLabel = computed(
   () => menu.find((item) => item.key === current.value)?.label || "仪表板",
 );
 function select(key: string) {
+  if (key !== "tickets") ticketContext.value = undefined;
   void router.push({ path: "/dashboard", query: { ...route.query, tab: key } });
   mobileMenu.value = false;
   window.scrollTo(0, 0);

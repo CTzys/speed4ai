@@ -5,6 +5,10 @@ spring:
     name: speed-custom-backend
   profiles:
     active: ${CUSTOM_PROFILE:test}
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   datasource:
     url: ${CUSTOM_DB_URL:jdbc:mysql://127.0.0.1:3306/speednet?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
     username: ${CUSTOM_DB_USER:root}

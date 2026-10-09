@@ -151,7 +151,11 @@ export interface PackageOrder {
   create_time: string;
   service_end: string | null;
 }
-export interface NodeRegion { id: number; name: string; cities: { id: number; name: string }[]; }
+export interface NodeRegion {
+  id: number;
+  name: string;
+  cities: { id: number; name: string }[];
+}
 export const packages = {
   regions: () => data(http.get<ApiResponse<NodeRegion[]>>("/packages/regions")),
   plans: () => data(http.get<ApiResponse<PackagePlan[]>>("/packages/plans")),
@@ -183,4 +187,99 @@ export const packages = {
       >("/packages/pay", { orderId, channelCode }),
     ),
   link: () => data(http.get<ApiResponse<{ path: string }>>("/packages/link")),
+};
+
+export interface TicketAttachment {
+  id: number;
+  name: string;
+  content_type: string;
+  size: number;
+}
+export interface Ticket {
+  id: number;
+  number: string;
+  title: string;
+  category: string;
+  status: string;
+  version: number;
+  create_time: string;
+  update_time: string;
+  closed_at: string | null;
+  close_reason: string;
+  unread_count?: number;
+  order_id: number | null;
+  subscription_id: number | null;
+}
+export interface TicketMessage {
+  id: number;
+  seq: number;
+  sender_type: string;
+  body: string;
+  visibility: string;
+  create_time: string;
+  attachments: TicketAttachment[];
+}
+export interface TicketDetail {
+  ticket: Ticket;
+  messages: TicketMessage[];
+  latestSeq: number;
+  nextBeforeSeq: number;
+  snapshot: {
+    order: { number: string; plan_name: string; status: string } | null;
+    subscription: { number: string; status: number } | null;
+  };
+}
+export const ticketStatuses: Record<string, string> = {
+  pending: "待处理",
+  processing: "处理中",
+  waiting: "等待客户",
+  resolved: "已解决",
+  closed: "已关闭",
+};
+export const ticketCategories: Record<string, string> = {
+  connection: "连接异常",
+  subscription: "订阅与流量",
+  payment: "订单与支付",
+  account: "账户问题",
+  other: "建议与其他",
+};
+export const tickets = {
+  unread: () => data(http.get<ApiResponse<number>>("/tickets/unread")),
+  page: (params: Record<string, unknown>) =>
+    data(
+      http.get<ApiResponse<{ list: Ticket[]; total: number }>>("/tickets", {
+        params,
+      }),
+    ),
+  detail: (id: number, beforeSeq = 0) =>
+    data(
+      http.get<ApiResponse<TicketDetail>>(`/tickets/${id}`, {
+        params: { beforeSeq },
+      }),
+    ),
+  create: (body: Record<string, unknown>) =>
+    data(http.post<ApiResponse<number>>("/tickets", body)),
+  reply: (id: number, body: Record<string, unknown>) =>
+    data(http.post<ApiResponse<boolean>>(`/tickets/${id}/reply`, body)),
+  action: (id: number, body: Record<string, unknown>) =>
+    data(http.post<ApiResponse<boolean>>(`/tickets/${id}/action`, body)),
+  read: (id: number, lastSeq: number) =>
+    data(http.post<ApiResponse<boolean>>(`/tickets/${id}/read`, { lastSeq })),
+  upload: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return data(
+      http.post<ApiResponse<TicketAttachment>>("/tickets/attachments", body),
+    );
+  },
+  removeAttachment: (id: number) =>
+    data(http.delete<ApiResponse<boolean>>(`/tickets/attachments/${id}`)),
+  image: async (id: number) => {
+    const response = await http.get<Blob>(`/tickets/attachments/${id}`, {
+      responseType: "blob",
+    });
+    if (!response.data.type.startsWith("image/"))
+      throw new Error("截图不存在或无权访问");
+    return response.data;
+  },
 };

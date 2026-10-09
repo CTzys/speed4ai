@@ -88,4 +88,47 @@ class PackageServiceTest {
  @Test void unsupportedConstraintsAreNotSilentlySaved(){assertThrows(RuntimeException.class,()->com.speednet.framework.common.util.json.JsonUtils.parseObject("{\"name\":\"限速\",\"transfer_enable\":1,\"speed_limit\":10}",PlanRequest.class));assertThrows(RuntimeException.class,()->com.speednet.framework.common.util.json.JsonUtils.parseObject("{\"name\":\"永久\",\"transfer_enable\":1,\"onetime_price\":0}",PlanRequest.class));}
  @Test void foreignTenantCannotBuyPrice(){TenantContextHolder.setTenantId(2L);assertThrows(RuntimeException.class,()->service.checkout(10,price,"foreign-tenant-key","127.0.0.1"));}
  @Test void conflictsMustBeResolvedWithoutDeletingHistory(){jdbc.update("INSERT INTO subscription(id,tenant_id,user_id,expiry_time) VALUES(100,1,10,DATEADD('DAY',1,CURRENT_TIMESTAMP)),(101,1,10,DATEADD('DAY',1,CURRENT_TIMESTAMP))");assertThrows(RuntimeException.class,()->service.checkout(10,price,"conflict-order-key","127.0.0.1"));}
+ private SubscriptionDO infoSubscription(){
+  var expiry=LocalDateTime.now().plusDays(30);
+  jdbc.update("INSERT INTO subscription(id,tenant_id,user_id,expiry_time) VALUES(100,1,10,?)",expiry);
+  var s=new SubscriptionDO().setId(100L).setUserId(10L).setPlanId(plan).setExpiryTime(expiry)
+   .setStartTime(LocalDateTime.now().minusDays(1)).setSyncStatus(2).setNodeLimit(10).setNextResetTime(expiry)
+   .setUnlimited(false).setBaseTotalBytes(1000L).setTotalBytes(1500L).setUsedUpload(100L).setUsedDownload(200L).setTrafficMode("both");
+  subs.put(100L,s);return s;
+ }
+ @Test void subscriptionInfoIncludesPacksInRemainingButReturnsBaseQuota(){
+  var s=infoSubscription();var info=service.subscriptionInfo(10);
+  assertEquals(s.getExpiryTime(),info.expiryTime());assertEquals("基础",info.planName());
+  assertEquals(1000L,info.totalBytes());assertEquals(1200L,info.remainingBytes());
+ }
+ @Test void subscriptionInfoUsesDownloadAccountingAndClampsExhaustedQuota(){
+  var s=infoSubscription().setTrafficMode("download");assertEquals(1300L,service.subscriptionInfo(10).remainingBytes());
+  s.setUsedDownload(2000L);assertEquals(0L,service.subscriptionInfo(10).remainingBytes());
+ }
+ @Test void unlimitedSubscriptionInfoHasNullQuotas(){infoSubscription().setUnlimited(true);var info=service.subscriptionInfo(10);assertNull(info.totalBytes());assertNull(info.remainingBytes());}
+ @Test void subscriptionInfoDoesNotExposeOtherUsersOrTenants(){infoSubscription();assertNull(service.subscriptionInfo(11));TenantContextHolder.setTenantId(2L);assertNull(service.subscriptionInfo(10));}
+ @Test void subscriptionInfoRetainsExpiredSubscription(){var s=infoSubscription();accounts.lock(10);s.setExpiryTime(LocalDateTime.now().minusDays(1));jdbc.update("UPDATE subscription SET expiry_time=? WHERE id=100",s.getExpiryTime());assertEquals(s.getExpiryTime(),service.subscriptionInfo(10).expiryTime());}
+
+ @Test void subscriptionInfoSerializesOverviewFieldsWithEpochMillis(){
+  var s=infoSubscription();var mapper=tools.jackson.databind.json.JsonMapper.builder()
+   .addModule(new com.speednet.framework.jackson.config.SpeednetJacksonAutoConfiguration().timestampSupportModuleBean()).build();
+  var json=mapper.readTree(mapper.writeValueAsString(service.subscriptionInfo(10)));
+  assertEquals(14,json.size());assertEquals(s.getExpiryTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),json.get("expiryTime").asLong());
+  s.setUnlimited(true);json=mapper.readTree(mapper.writeValueAsString(service.subscriptionInfo(10)));
+  assertEquals(14,json.size());assertTrue(json.get("totalBytes").isNull());assertTrue(json.get("remainingBytes").isNull());
+ }
+
+ @Test void subscriptionInfoIncludesOverviewStateAndUsage(){
+  var s=infoSubscription();when(subscriptions.packRemaining(s)).thenReturn(500L);
+  var order=service.checkout(11,price,"other-user-pending","127.0.0.1");
+  var info=service.subscriptionInfo(10);
+  assertEquals(300L,info.usedBytes());assertEquals(500L,info.extraBytes());assertEquals(10,info.nodeLimit());
+  assertEquals(s.getNextResetTime(),info.nextResetTime());assertEquals(1,info.status());assertEquals(2,info.syncStatus());
+  assertEquals(20.0,info.usagePercent());assertEquals(30,info.remainingDays());assertEquals(0,info.pendingOrderCount());
+  jdbc.update("UPDATE subscription_purchase SET user_id=10 WHERE id=?",id(order));assertEquals(1,service.subscriptionInfo(10).pendingOrderCount());
+  jdbc.update("UPDATE subscription_purchase SET status='completed' WHERE id=?",id(order));assertEquals(0,service.subscriptionInfo(10).pendingOrderCount());
+  s.setExpiryTime(LocalDateTime.now().minusDays(1));var expired=service.subscriptionInfo(10);
+  assertEquals(4,expired.status());assertEquals(0,expired.remainingDays());assertEquals(0,expired.extraBytes());
+ }
+
 }

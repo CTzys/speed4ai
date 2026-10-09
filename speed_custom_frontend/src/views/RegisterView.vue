@@ -9,7 +9,7 @@
         <el-form-item label="确认密码" prop="confirm"><el-input v-model="form.confirm" size="large" type="password" show-password placeholder="再次输入密码" autocomplete="new-password" /></el-form-item>
         <el-button class="full-button" type="primary" size="large" :loading="loading" native-type="submit">创建账户 <span aria-hidden="true">→</span></el-button>
       </el-form><p class="auth-hint">注册即表示您同意遵守本站服务规则。</p>
-    </div><div class="auth-bottom">© 2026 SpeedNet · 客户中心</div></div>
+    </div><div class="auth-bottom"><router-link to="/">← 返回网站首页</router-link><br><br>© 2026 SpeedNet · 客户中心</div></div>
   </main>
 </template>
 <script setup lang="ts">

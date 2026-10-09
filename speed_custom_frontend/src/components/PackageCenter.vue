@@ -75,7 +75,7 @@
           type="warning"
           :closable="false"
         />
-        <div class="package-actions">
+        <div class="package-actions"><el-button v-if="current" @click="emit('support', { subscriptionId: current.id })">反馈使用问题</el-button>
           <el-button type="primary" @click="emit('navigate', 'plans')"
             >续订 / 升级 / 补充流量</el-button
           ><el-button
@@ -254,7 +254,7 @@
       :close-on-click-modal="false"
     >
       <template v-if="selected"
-        ><h3>{{ selected.plan_name }} · {{ kinds[selected.kind] }}</h3>
+        ><el-button link type="primary" @click="emit('support', { orderId: selected.id })">对此订单提交工单</el-button><h3>{{ selected.plan_name }} · {{ kinds[selected.kind] }}</h3>
         <el-descriptions :column="1" border
           ><el-descriptions-item label="订单号">{{
             selected.number
@@ -348,7 +348,7 @@ import {
   type NodeRegion,
 } from "../api";
 const props = defineProps<{ tab: string; preview?: boolean }>();
-const emit = defineEmits<{ navigate: [string] }>();
+const emit = defineEmits<{ navigate: [string]; support: [{ orderId?: number; subscriptionId?: number }] }>();
 const plans = ref<PackagePlan[]>([]),
   orders = ref<PackageOrder[]>([]),
   current = ref<CurrentPackage | null>(null),

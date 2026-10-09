@@ -28,6 +28,7 @@ class SubscriptionServiceTest {
   var accounts=mock(SubscriptionAccountService.class);when(accounts.allows(anyLong(),anyLong())).thenReturn(true);ReflectionTestUtils.setField(service,"accounts",accounts);
   var ds=new org.h2.jdbcx.JdbcDataSource();ds.setURL("jdbc:h2:mem:pack"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1");
   var jdbc=new org.springframework.jdbc.core.JdbcTemplate(ds);jdbc.execute("CREATE TABLE subscription_traffic_pack(id BIGINT AUTO_INCREMENT PRIMARY KEY,tenant_id BIGINT,subscription_id BIGINT,purchase_id BIGINT UNIQUE,total_bytes BIGINT,remaining_bytes BIGINT)");ReflectionTestUtils.setField(service,"jdbc",jdbc);
+  var clashRules=mock(ClashRuleService.class);when(clashRules.effective(anyLong())).thenReturn(ClashRuleService.DEFAULT_RULES);ReflectionTestUtils.setField(service,"clashRules",clashRules);
   TenantContextHolder.setTenantId(1L);
   s=new SubscriptionDO().setId(1L).setUserId(10L).setNumber("SN-test").setStartTime(LocalDateTime.now().minusDays(1)).setExpiryTime(LocalDateTime.now().plusDays(30)).setPaused(false).setUnlimited(false).setTotalBytes(1000L).setUsedUpload(0L).setUsedDownload(0L).setLifetimeUpload(0L).setLifetimeDownload(0L).setTrafficMode("both").setResetMode("none").setResetIntervalDays(30).setNodeLimit(1).setStatus(1).setSyncStatus(0).setLastError("");s.setTenantId(1L);
   c=new SubscriptionClientDO().setId(1L).setSubscriptionId(1L).setNodeId(1L).setServerId(1L).setInboundId(1L).setEmail("sn1s1c1").setCredential("original-uuid").setProtocol("vmess").setRemoteCreated(true).setReleased(false).setSyncStatus(2).setNodeVersion(1).setSampleUpload(0L).setSampleDownload(0L).setUsedUpload(0L).setUsedDownload(0L);c.setTenantId(1L);
@@ -125,4 +126,17 @@ class SubscriptionServiceTest {
   when(gateway.traffic(c)).thenReturn(new SubscriptionGateway.Traffic(0,120));service.reconcile(1L);
   assertEquals(30L,service.packRemaining(s));assertEquals(130L,s.getTotalBytes());assertEquals(0L,s.getUsedDownload());assertEquals(0L,s.getExtraUsedBytes());
  }
+ @Test void clashFeedUsesSameEntitlementChecksAndPreservesLegacyFeed(){
+  when(subscriptions.selectOne(any())).thenReturn(s);s.setSyncStatus(2).setToken(SubscriptionPolicy.token());
+  c.setConnectionUri("vless://test-uuid@edge.example:443?type=ws&security=tls&sni=edge.example&path=%2Fws#Node");
+  var feed=service.feed(s.getToken(),"clash");Map<?,?> yaml=new org.yaml.snakeyaml.Yaml().load(feed.content());
+  assertEquals(1,((List<?>)yaml.get("proxies")).size());assertEquals(s.getTotalBytes(),feed.total());
+  assertEquals(c.getConnectionUri(),new String(Base64.getDecoder().decode(service.feed(s.getToken()).content())));
+  var rules=(ClashRuleService)ReflectionTestUtils.getField(service,"clashRules");
+  when(rules.effective(10L)).thenReturn(List.of("DOMAIN-SUFFIX,example.com,DIRECT","MATCH,SpeedNet"));
+  Map<?,?> updated=new org.yaml.snakeyaml.Yaml().load(service.feed(s.getToken(),"clash").content());
+  assertEquals(List.of("DOMAIN-SUFFIX,example.com,DIRECT","MATCH,SpeedNet"),updated.get("rules"));
+  s.setPaused(true);assertThrows(ServiceException.class,()->service.feed(s.getToken(),"clash"));
+ }
+
 }

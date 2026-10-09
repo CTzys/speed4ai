@@ -14,8 +14,8 @@ import org.springframework.core.io.FileSystemResource;
 public class FlywayMaintenance {
     public static void main(String[] args) throws Exception {
         String action = args[1];
-        if (!List.of("check", "info", "repair", "validate", "consolidate-v8", "consolidate-v9", "migrate").contains(action)) {
-            throw new IllegalArgumentException("用法：bash script/flyway/flyway.sh [check|info|repair|validate|migrate|consolidate-v8|consolidate-v9] [profile]");
+        if (!List.of("check", "info", "repair", "validate", "consolidate-v8", "consolidate-v9", "consolidate-v10", "migrate").contains(action)) {
+            throw new IllegalArgumentException("用法：bash script/flyway/flyway.sh [check|info|repair|validate|migrate|consolidate-v8|consolidate-v9|consolidate-v10] [profile]");
         }
         Path resources = Path.of(args[0], "speednet-server", "src", "main", "resources");
         StandardEnvironment env = new StandardEnvironment();
@@ -68,6 +68,12 @@ public class FlywayMaintenance {
                 flyway.repair();
                 flyway.validate();
                 System.out.println("迁移历史已合并为 V1～V9，校验通过；业务表和数据未重复迁移。");
+            }
+            case "consolidate-v10" -> {
+                consolidate(flyway, resolved, 10, 11, "V10__customer_support_and_clash_rules.sql");
+                flyway.repair();
+                flyway.validate();
+                System.out.println("迁移历史已合并为 V1～V10，校验通过；业务表和数据未重复迁移。");
             }
             case "migrate" -> flyway.migrate();
             case "repair" -> { flyway.repair(); flyway.validate(); }
